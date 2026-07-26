@@ -78,3 +78,34 @@ Real findings from the session, all single-run `[M]`:
 Pre-registered `notebook/uma-carveout-controls-fast-tier.md` with SUCCESS/KILL fixed
 before the run, then asked the owner to set BIOS UMA FB Size to 96 GB. The BIOS change
 is the experiment, not a fix — the KILL condition sends us back to the default.
+
+## 2026-07-26 — experiment `uma-carveout-controls-fast-tier`: SUCCESS
+
+[G5 — Evidence] Owner set BIOS UMA FB Size to 96 GB. Pre-registration was committed
+first (`106ce53`, `v0.2.0`), so the thresholds were frozen before the run.
+
+Fast tier moved **30 GiB → ≥62 GiB** at ~200 GB/s, with no degradation anywhere in the
+swept range. Reported pool 82.99 → 107.87 GiB. SUCCESS was ≥60 GiB; KILL was 30 ± 4.
+The named confounder (thermal throttling) is cleared: small-footprint bandwidth is
+unchanged, so the boundary moved rather than the machine slowing. **Keeping 96 GB.**
+
+The measured boundary is a **floor, not an edge** — the sweep hit a different limit
+before finding where bandwidth degrades:
+
+**Unplanned finding — single tensors ≥32 GiB are unsafe.** 31 GiB copies cleanly at
+199.9 GB/s; 32 GiB hard-hangs (11 minutes at 0 CPU seconds, host free RAM to 5 GB,
+force-killed); 36 GiB raises `hipErrorLaunchFailure`. The GPU recovers fully in a fresh
+process. 32 GiB is exactly 2^35 bytes, so `[A]` medium confidence this is a 32-bit
+overflow in the copy path rather than a capacity limit — testable by allocating the
+same bytes as fp32. **A hang at 0 CPU is silent**: a long training run would stall, not
+crash, which makes this a correctness hazard rather than a performance note.
+
+Stopped the fault investigation here rather than chasing it: the 90-minute environment
+timebox had expired, and each hang costs ~11 minutes plus a force-kill. Re-decided per
+the timebox rule — it becomes a Hardware Validation Gate item with its own
+pre-registration. Not skipped, scheduled.
+
+Instrument changes made during the run, both after the primary before/after comparison
+was already captured with the `v0.2.0` probe: `--sizes` for targeted sweeps, and a GPU
+fault is now caught and reported as a result rather than aborting the sweep (a poisoned
+HIP context makes every later reading in that process meaningless, so it stops).

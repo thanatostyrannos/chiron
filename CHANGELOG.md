@@ -5,8 +5,38 @@ git tags described in CLAUDE.md (semver; milestones are named in the tag annotat
 
 ## [Unreleased]
 
-Next: complete Environment Bootstrap (gfx1151 ROCm torch, capacity ceiling), then the
-Reference Library milestone.
+Next: the Reference Library milestone. The Hardware Validation Gate additionally owes a
+pre-registered investigation of the ≥32 GiB tensor hang/fault.
+
+## [0.3.0] — 2026-07-26 — experiment `uma-carveout-controls-fast-tier`
+
+### Added
+- `notebook/uma-carveout-controls-fast-tier.md` results: BIOS UMA FB Size 16 → 96 GB
+  moved the GPU's fast memory tier from a 30 GiB to a **≥62 GiB** working set at
+  ~200 GB/s. Pre-registered SUCCESS (≥60 GiB) met; setting kept.
+- New ledger entry `large-tensor-fault-32gib`: single tensors ≥32 GiB hard-hang at 0 CPU
+  or raise `hipErrorLaunchFailure`. Keep individual buffers under 32 GiB.
+
+### Changed
+- `scripts/measure_memory_bandwidth_tiers.py`: `--sizes` for targeted sweeps; a GPU
+  fault is now reported as a result and stops the sweep, rather than aborting mid-run
+  or recording the post-fault cascade as further data points.
+
+## [0.2.0] — 2026-07-26 — milestone `rocm-toolchain`
+
+### Added
+- AMD gfx1151 ROCm nightlies in `C:\venvs\lab`: `torch 2.12.0a0+rocm7.13.0a20260313`
+  (HIP 7.2.0), arch `gfx1151`. preflight 18/19. The torch wheel pins
+  `rocm==7.13.0a20260313`; that pinned pair is the instrument of record.
+- `scripts/activate-lab.ps1` (session-scoped env, no system changes),
+  `scripts/measure_capacity_ceiling.py`, `scripts/measure_memory_bandwidth_tiers.py`,
+  `scripts/benchmark_gemm.py`.
+
+### Fixed
+- `scripts/preflight.ps1` capacity probe reported its own search bound as a
+  measurement. It now prints `SATURATED` when it hits the bound and labels the figure
+  `alloc-only`, since an untouched `torch.empty` can be a reservation that fails on
+  first write.
 
 ## [0.1.0] — 2026-07-26 — milestone `scaffold`
 

@@ -22,7 +22,7 @@ one-line rationale logged here instead of a full Discovery Brief.
 
 | Experiment (slug) | Hypothesis (one line) | Status | Outcome |
 |---|---|---|---|
-| `uma-carveout-controls-fast-tier` | Raising BIOS UMA FB Size to 96 GB moves the high-bandwidth working-set boundary out from its measured 30 GiB. | pre-registered | pending run |
+| `uma-carveout-controls-fast-tier` | Raising BIOS UMA FB Size to 96 GB moves the high-bandwidth working-set boundary out from its measured 30 GiB. | complete | **SUCCESS** — fast tier 30 GiB → ≥62 GiB at ~200 GB/s. Kept at 96 GB. Also found: single tensors ≥32 GiB hang or fault. |
 
 Platform-characterisation experiments (like the one above) run before the Hardware
 Validation Gate because they establish the instrument. Model ablations are authored in

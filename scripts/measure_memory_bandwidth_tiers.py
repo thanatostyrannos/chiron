@@ -43,21 +43,23 @@ def measure_copy_bandwidth_gb_s(buffer_gib: float, iters: int = 3) -> float | No
         torch.cuda.empty_cache()
         return None
 
-    try:
-        src.fill_(1.0)
-        torch.cuda.synchronize()
-        for _ in range(2):  # warmup
-            dst.copy_(src)
-        torch.cuda.synchronize()
+    # A kernel fault here (hipErrorLaunchFailure) poisons the HIP context: every
+    # later call in this process fails too, so cleanup is best-effort and the caller
+    # must stop rather than record the cascade as more data points.
+    src.fill_(1.0)
+    torch.cuda.synchronize()
+    for _ in range(2):  # warmup
+        dst.copy_(src)
+    torch.cuda.synchronize()
 
-        start = time.perf_counter()
-        for _ in range(iters):
-            dst.copy_(src)
-        torch.cuda.synchronize()
-        elapsed = (time.perf_counter() - start) / iters
-    finally:
-        del src, dst
-        torch.cuda.empty_cache()
+    start = time.perf_counter()
+    for _ in range(iters):
+        dst.copy_(src)
+    torch.cuda.synchronize()
+    elapsed = (time.perf_counter() - start) / iters
+
+    del src, dst
+    torch.cuda.empty_cache()
 
     moved_bytes = 2 * n * 2  # one read + one write, 2 bytes/elem
     return moved_bytes / elapsed / 1e9
@@ -74,6 +76,13 @@ def main() -> None:
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--coarse", action="store_true", help="wide sweep (default)")
     group.add_argument("--fine", action="store_true", help="narrow sweep around the cliff")
+    group.add_argument(
+        "--sizes",
+        type=float,
+        nargs="+",
+        metavar="GIB",
+        help="explicit buffer sizes in GiB; footprint is twice each value",
+    )
     args = parser.parse_args()
 
     if not torch.cuda.is_available():
@@ -83,12 +92,23 @@ def main() -> None:
     print(f"device: {torch.cuda.get_device_name(0)}  arch: {getattr(props, 'gcnArchName', '?')}")
     print(f"torch: {torch.__version__}  reported_pool_GiB: {props.total_memory / 1024**3:.2f}")
 
-    sizes = FINE_BUF_GIB if args.fine else COARSE_BUF_GIB
+    if args.sizes:
+        sizes = args.sizes
+    elif args.fine:
+        sizes = FINE_BUF_GIB
+    else:
+        sizes = COARSE_BUF_GIB
     results: list[tuple[float, float]] = []
 
+    faulted_at_gib: float | None = None
     print(f"\n{'buf_GiB':>8} {'footprint_GiB':>14} {'GB/s':>8}")
     for gib in sizes:
-        bandwidth = measure_copy_bandwidth_gb_s(gib)
+        try:
+            bandwidth = measure_copy_bandwidth_gb_s(gib)
+        except Exception as exc:  # noqa: BLE001 - a GPU fault is a result, not a bug
+            print(f"{gib:>8} {2 * gib:>14} {'GPU FAULT':>8}  {type(exc).__name__}: {exc}")
+            faulted_at_gib = gib
+            break
         if bandwidth is None:
             print(f"{gib:>8} {2 * gib:>14} {'ALLOC FAIL':>8}")
             break
@@ -97,7 +117,20 @@ def main() -> None:
 
     boundary = fast_tier_boundary_gib(results)
     print(f"\nfast_tier_boundary_GiB (>={FAST_TIER_FLOOR_GB_S:.0f} GB/s): {boundary:.0f}")
-    print(json.dumps({"fast_tier_boundary_gib": boundary, "samples": results}))
+    if faulted_at_gib is not None:
+        print(
+            f"NOTE: swept range ended in a GPU fault at a {2 * faulted_at_gib:.0f} GiB "
+            f"footprint, so the boundary above is a floor, not a measured edge."
+        )
+    print(
+        json.dumps(
+            {
+                "fast_tier_boundary_gib": boundary,
+                "gpu_fault_footprint_gib": None if faulted_at_gib is None else 2 * faulted_at_gib,
+                "samples": results,
+            }
+        )
+    )
 
 
 if __name__ == "__main__":
