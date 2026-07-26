@@ -5,8 +5,46 @@ git tags described in CLAUDE.md (semver; milestones are named in the tag annotat
 
 ## [Unreleased]
 
-Next: the Frontier Survey. The Hardware Validation Gate additionally owes a
-pre-registered investigation of the ≥32 GiB tensor hang/fault.
+Next: the seven `research/notes/` surveys, then `research/synthesis.md` (presented before
+commit, per the kickoff). The Hardware Validation Gate still owes a pre-registered
+investigation of the ≥32 GiB tensor hang/fault.
+
+## [0.6.0] — 2026-07-26 — milestone `memory-survey`
+
+### Added
+- `research/memory/` — the lab's priority research track. **Ten notes, ~52,000 words**,
+  each grounded in the 76 verified papers and the 91 verified code pointers rather than
+  in recall: taxonomy, KV mechanics, compression/eviction, serving hierarchy,
+  constant-state memory, hybrids, long-context, agent memory, the failure register, and
+  the ranked open problems.
+- `scripts/verify_citations.py` — extracts every arXiv id from a set of notes and
+  batch-resolves them against the API. Distinguishes *unresolved* from *unreachable* and
+  supports `--resume`, so a timeout cannot be mistaken for a fabrication and a partial
+  run cannot look like a clean one.
+- `research/memory/citation-verification.json` — the audit trail: **265 distinct arXiv
+  ids across ten notes, 0 unresolved.**
+
+### Findings worth carrying forward
+- Decode-attention arithmetic intensity is **2G/dtype_bytes** — for bf16, exactly the GQA
+  group size, independent of context length, head dim and depth. Against our measured
+  ~105 FLOP/byte ridge point that puts Laguna-S decode attention at 5.7–8.6% of peak.
+  Falsifiable on our hardware, and now the first open question in the backlog.
+- The HF reference MLA implementation **decompresses before the cache write**, so it
+  saves nothing — a 17.8× gap against what the DeepSeek-V2 arithmetic implies. Found by
+  reading the implementation, not the paper.
+- The taxonomy note's reframe: the five memory types are partitioned by
+  **reconstructibility**, not capacity or speed. KV cache and recurrent state are memo
+  tables recoverable by recompute; the session store alone is authoritative, which is
+  why the poisoning literature exists only there.
+- Top-ranked open problem is **attribution** (P5 · T5 · E5): isolating which mechanism a
+  cache policy's gain came from. Several groups argue most of PyramidKV's reported gain
+  comes from SnapKV's observation window rather than its per-layer budget allocation.
+- Seven points recorded as contested rather than resolved, chiefly **whether the KV cache
+  is "memory" at all** — the serving and agent-memory literatures use incompatible
+  vocabulary for the same bytes and rarely cross-cite.
+- The notes caught an error in our own register: the 192 KiB/token Laguna figure assumes
+  uniform KV heads, which `laguna-heads-uniform` refutes. Correctly treated as an upper
+  bound pending per-layer recomputation.
 
 ## [0.5.0] — 2026-07-26 — milestone `paper-anchors`
 

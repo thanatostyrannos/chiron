@@ -181,3 +181,47 @@ Two incidental findings: the lab venv ships **no CA bundle**, so TLS to arxiv.or
 outright until `certifi` was installed — worth knowing before any script here talks to
 an HTTPS endpoint. And the arXiv API is slow enough (23.9 s for a bare id lookup) that
 a 45 s timeout manufactures false negatives; raised to 90 s.
+
+## 2026-07-26 — milestone `memory-survey`
+
+Ten notes, ~52,000 words, ten parallel specialists, each grounded in the 76 verified
+papers and the 91 verified code pointers before writing a word. The memory track is the
+lab's stated priority and got the depth accordingly; the failure register (49 KB) and the
+compression/eviction note (47 KB) are the largest.
+
+**Every citation checked: 265 distinct arXiv ids, 0 unresolved.** Wrote
+`scripts/verify_citations.py` to do it in batches — one at a time would have taken an
+hour. Two design points earned the hard way earlier today: it separates *unresolved* from
+*unreachable* (a timeout is not evidence about a paper), and it supports `--resume`, which
+mattered because the API timed out on 114 of the first 194 at a batch size of 40. Dropped
+to 15 and resumed twice to reach zero. Spot-checked the failure register's citations in
+context — the resolved titles match the claims sitting beside them, so this survived a
+correctness sample as well as a fabrication check.
+
+Zero fabrications should be read against the paper-anchors run, where 1 of 81 was wrong.
+The difference: these agents were told up front that every id would be machine-checked and
+traced back to the note that produced it. Cheap precommitment, measurable effect — worth
+keeping as standard practice for the notes track.
+
+Substantive findings, all `[C]`-grade until the rig reproduces them:
+- Decode-attention arithmetic intensity is **2G/dtype_bytes** — for bf16, exactly the GQA
+  group size, independent of context length and depth. Against our own measured ~105
+  FLOP/byte ridge that is 5.7–8.6% of peak for Laguna-S. Falsifiable *here*, and now the
+  first open question in the backlog.
+- The HF reference MLA implementation decompresses before the cache write and therefore
+  saves nothing — 17.8x off what the paper's arithmetic implies. Only reading the code
+  surfaces that.
+- Reconstructibility, not speed, partitions the five memory types. KV cache and recurrent
+  state are memo tables recoverable by recompute; the session store is the only
+  authoritative tier, which is exactly where the poisoning literature lives. Direct
+  consequence for what Mnemosyne must guarantee.
+- Top-ranked problem is attribution (P5 · T5 · E5) — the field's own diagnosis, and the
+  thesis this lab was built on.
+
+The notes also caught an arithmetic error of mine: the 192 KiB/token Laguna figure assumes
+uniform KV heads, which `laguna-heads-uniform` already refutes. They flagged it as an
+upper bound rather than repeating it. Delegated work checking the delegator is the point
+of grounding agents in the registers rather than in their own recall.
+
+Remaining for the Frontier Survey: the seven `research/notes/` files, then
+`research/synthesis.md`, which the kickoff requires be presented before commit.
