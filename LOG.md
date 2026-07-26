@@ -40,3 +40,41 @@ cold-start from the repo alone.
 Deferred, not skipped: the GitHub remote. `gh repo create` needs a visibility
 decision from the owner and CLAUDE.md hard rule 6 requires asking before a public
 push. Local `main` + tag only.
+
+## 2026-07-26 — ROCm toolchain live; the instrument lied twice
+
+Installed AMD's gfx1151 nightlies into `C:\venvs\lab`: `torch
+2.12.0a0+rocm7.13.0a20260313` (HIP 7.2.0), arch `gfx1151`, device visible. The torch
+wheel pins `rocm==7.13.0a20260313` and downgraded the 7.14.0a20260612 SDK installed
+minutes earlier — the pinned pair is the instrument, and that pin is why an
+unversioned benchmark on this stack is worthless. preflight now 18/19.
+
+Two measurement errors caught, both worth recording because both produced numbers that
+looked like results:
+
+1. **Search bounds reported as measurements.** The capacity probe I wrote capped its
+   binary search at the reported pool and returned 82.67 GiB — its cap.
+   `preflight.ps1` capped at 100 and returned 100 — its cap. The two disagreed, which
+   is the only reason either was caught. `preflight.ps1` now prints `SATURATED` and
+   labels the figure `alloc-only` instead of returning a bare number.
+2. **Untouched allocations counted as capacity.** Both probes only called
+   `torch.empty`. A reservation that fails on first write would have passed.
+   `scripts/measure_capacity_ceiling.py` now fills and reads back every trial.
+
+Then made a third error live: re-ran that probe with a 104 GiB bound against 112 GB of
+physical RAM, drove the host into swap, and aborted it. A bound safely under physical
+memory (~90 GiB) is the fix. What survives as evidence is the one trial that completed
+honestly: **≥74.40 GiB written, read back, released, 4.04 s.**
+
+Real findings from the session, all single-run `[M]`:
+- **Fast tier is ~30 GiB, not 83.** ~195 GB/s up to a 30 GiB footprint; 61 GB/s at 32
+  GiB. Sharp boundary, ~2x. It does **not** align with the 16 GiB dedicated carve-out —
+  a 24 GiB footprint still ran at 198 GB/s. For a memory-systems lab this inverts the
+  headline: capacity is ~83 GiB, but the number that sizes a KV-cache experiment is 30.
+- **hipBLASLt: no 5x cliff on this wheel.** 18.6 → 20.9 TFLOPS bf16 (+12%) with the
+  env set. Worth setting, but the documented catastrophe did not reproduce.
+- **GEMM is 63% of the published figure** (20.9 vs ~33 TFLOPS). Unexplained.
+
+Pre-registered `notebook/uma-carveout-controls-fast-tier.md` with SUCCESS/KILL fixed
+before the run, then asked the owner to set BIOS UMA FB Size to 96 GB. The BIOS change
+is the experiment, not a fix — the KILL condition sends us back to the default.

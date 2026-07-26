@@ -71,7 +71,13 @@ $probe = @'
 import torch, sys
 if not torch.cuda.is_available():
     print("MISSING - no GPU"); sys.exit(0)
-lo, hi, best = 1, 100, 0
+# Allocation-only probe: fast, and deliberately labelled as such. torch.empty can hand
+# back a reservation that fails on first write, so this is an upper bound on usable
+# memory, not the ceiling. scripts/measure_capacity_ceiling.py writes and reads back
+# every trial - that is the number ASSUMPTIONS.md records.
+# The bound is stated in the output: a saturated search otherwise reports itself.
+LIMIT = 100
+lo, hi, best = 1, LIMIT, 0
 while lo <= hi:
     mid = (lo + hi) // 2
     try:
@@ -79,7 +85,10 @@ while lo <= hi:
         del x; torch.cuda.empty_cache(); best = mid; lo = mid + 1
     except Exception:
         torch.cuda.empty_cache(); hi = mid - 1
-print(f"{best} GB")
+if best >= LIMIT:
+    print(f">={LIMIT} GiB alloc-only (SATURATED at probe bound - not a measurement)")
+else:
+    print(f"{best} GiB alloc-only (untouched; see measure_capacity_ceiling.py)")
 '@
 $probe | Out-File -Encoding utf8 "$env:TEMP\cap_probe.py"
 Check "Max GPU allocation" { python "$env:TEMP\cap_probe.py" 2>$null } "close to BIOS UMA FB Size (target 96GB)" "If far below the BIOS UMA setting: raise UMA FB Size in BIOS, confirm the driver exposes it, and re-run. This number is the ceiling for every long-context experiment — record it."

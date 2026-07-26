@@ -22,4 +22,8 @@ one-line rationale logged here instead of a full Discovery Brief.
 
 | Experiment (slug) | Hypothesis (one line) | Status | Outcome |
 |---|---|---|---|
-| _(none yet — the backlog is authored in the Ablation Backlog phase; runs begin after the Hardware Validation Gate)_ | | | |
+| `uma-carveout-controls-fast-tier` | Raising BIOS UMA FB Size to 96 GB moves the high-bandwidth working-set boundary out from its measured 30 GiB. | pre-registered | pending run |
+
+Platform-characterisation experiments (like the one above) run before the Hardware
+Validation Gate because they establish the instrument. Model ablations are authored in
+the Ablation Backlog phase and run only after that gate passes.
