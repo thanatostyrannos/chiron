@@ -5,9 +5,35 @@ git tags described in CLAUDE.md (semver; milestones are named in the tag annotat
 
 ## [Unreleased]
 
-Next: `research/reference/papers/` (BibTeX + anchoring surveys) closes out the Reference
-Library; then the Frontier Survey. The Hardware Validation Gate additionally owes a
+Next: the Frontier Survey. The Hardware Validation Gate additionally owes a
 pre-registered investigation of the ≥32 GiB tensor hang/fault.
+
+## [0.5.0] — 2026-07-26 — milestone `paper-anchors`
+
+### Added
+- `research/reference/papers/anchors.bib` — **76 papers across 9 tracks**, ranked
+  must/should/could (24/36/16), each with a one-line "read this for X". 20 are from
+  2026: built against current arXiv, not from training data.
+- `research/reference/papers/README.md` — the ranked reading list, plus each track's
+  recency note and the points the literature actually contests (notably whether the KV
+  cache is "memory" at all — serving papers treat it as a tensor buffer, agent-memory
+  papers as a first-class tier, and the two rarely cross-cite).
+- `scripts/verify_papers.py` — resolves every claimed arXiv id against the live API and
+  checks the returned title matches the claimed one. Rejects an id that resolves to a
+  *different* paper, and distinguishes **unreachable** from **does not exist** (exiting
+  non-zero rather than letting a network timeout masquerade as a verdict).
+- `scripts/generate_papers.py` — emits BibTeX from API metadata only, with deterministic
+  unique cite keys.
+
+### Notes
+- Of 81 candidates, all self-reported by the discovery agents as "verified", **75
+  resolved cleanly, 1 was wrong.** The one failure was `2505.00675` cited under a title
+  the paper no longer has — a real id whose paper had been retitled between versions.
+  Adjudicated by checking authors and abstract, then included under its canonical title;
+  the rejection row is kept in the README rather than deleted, because "cite by id,
+  titles move" is the transferable lesson.
+- `certifi` added to the lab venv: it ships no CA bundle, so TLS to arxiv.org failed
+  outright. API timeout raised to 90s after a bare id lookup was measured at 23.9s.
 
 ## [0.4.0] — 2026-07-26 — milestone `reference-library`
 

@@ -1,0 +1,234 @@
+"""Emit research/reference/papers/anchors.bib and README.md from verified arXiv metadata.
+
+Every field written here came back from the arXiv API via scripts/verify_papers.py.
+Nothing is transcribed from memory, including titles: a citation that looks right and
+is wrong is undetectable by reading and propagates into every document that cites it.
+
+Usage:
+    python scripts/generate_papers.py <resolved_papers.json> [more...] \
+        [--recency recency_notes.json] [--out research/reference/papers]
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+from collections import defaultdict
+from pathlib import Path
+
+TIER_ORDER = {"must": 0, "should": 1, "could": 2}
+
+TRACK_TITLES = {
+    "memory-taxonomy": "Memory taxonomy — fixing the vocabulary",
+    "kv-cache-mechanics": "KV cache mechanics and reduction",
+    "kv-compression-eviction": "KV compression and eviction",
+    "kv-serving-hierarchy": "The serving layer as a memory hierarchy",
+    "constant-state-memory": "Constant-state memory — SSMs and linear attention",
+    "hybrid-architectures": "Hybrid architectures and ratio selection",
+    "long-context-behavior": "Long-context behaviour and effective context",
+    "agent-memory": "Agent memory and its failure modes",
+    "moe-and-training": "MoE routing, scaling laws, hyperparameter transfer",
+}
+
+TRACK_ORDER = list(TRACK_TITLES)
+
+
+_STOPWORDS = {"a", "an", "the", "of", "for", "and", "with", "in", "on", "to", "via", "is"}
+
+
+def bibkey(paper: dict) -> str:
+    """firstauthorsurname + year + first meaningful title word. Deterministic."""
+    authors = paper.get("authors") or []
+    surname = re.sub(r"[^a-z]", "", authors[0].split()[-1].lower()) if authors else "anon"
+    words = re.findall(r"[A-Za-z]+", paper["title"])
+    word = next((w for w in words if w.lower() not in _STOPWORDS and len(w) > 3), "paper")
+    return f"{surname}{paper['published'][:4]}{word.lower()}"
+
+
+def bibtex_entry(rec: dict) -> str:
+    p = dict(rec["paper"])
+    p.setdefault("bibkey", bibkey(p))
+    authors = " and ".join(p["authors"]) if p["authors"] else "Unknown"
+    primary = p["categories"][0] if p.get("categories") else "cs.LG"
+    why = rec["why_read"].replace("{", "").replace("}", "")
+    return "\n".join(
+        [
+            f"@misc{{{p['bibkey']},",
+            f"  title         = {{{p['title']}}},",
+            f"  author        = {{{authors}}},",
+            f"  year          = {{{p['published'][:4]}}},",
+            f"  eprint        = {{{p['arxiv_id']}}},",
+            "  archivePrefix = {arXiv},",
+            f"  primaryClass  = {{{primary}}},",
+            f"  url           = {{https://arxiv.org/abs/{p['arxiv_id']}}},",
+            f"  note          = {{[{rec['tier']}] {why}}},",
+            "}",
+        ]
+    )
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("resolved", nargs="+")
+    ap.add_argument("--recency")
+    ap.add_argument("--out", default="research/reference/papers")
+    args = ap.parse_args()
+
+    resolved: list[dict] = []
+    rejected: list[dict] = []
+    for path in args.resolved:
+        blob = json.loads(Path(path).read_text(encoding="utf-8-sig"))
+        resolved.extend(blob.get("resolved", []))
+        rejected.extend(blob.get("rejected", []))
+
+    # Later files win: an adjudicated re-verification supersedes an earlier rejection.
+    by_id: dict[str, dict] = {}
+    for rec in resolved:
+        by_id[rec["paper"]["arxiv_id"].split("v")[0]] = rec
+    resolved = list(by_id.values())
+
+    # A rejection whose claimed id later resolved cleanly was a TITLE DRIFT, not a bad
+    # citation -- arXiv papers get retitled between versions. Keep the row and mark it:
+    # the lesson (cite by id, never by title) is worth more than a tidy table.
+    resolved_titles = {r["paper"]["title"] for r in resolved}
+    for r in rejected:
+        bare = r.get("claimed_id", "").split("v")[0]
+        if bare in by_id:
+            r["adjudicated"] = by_id[bare]["paper"]["title"]
+    rejected = [r for r in rejected if r["claimed_title"] not in resolved_titles]
+
+    # BibTeX keys must be unique or downstream tooling silently drops entries.
+    used: dict[str, int] = {}
+    for rec in sorted(resolved, key=lambda r: r["paper"]["published"]):
+        key = bibkey(rec["paper"])
+        if key in used:
+            used[key] += 1
+            key = f"{key}{chr(ord('a') + used[key] - 1)}"
+        else:
+            used[key] = 1
+        rec["paper"]["bibkey"] = key
+
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # ---- anchors.bib -------------------------------------------------------
+    by_track: dict[str, list[dict]] = defaultdict(list)
+    for rec in resolved:
+        by_track[rec["track"]].append(rec)
+    for recs in by_track.values():
+        recs.sort(key=lambda r: (TIER_ORDER.get(r["tier"], 9), r["paper"]["published"]))
+
+    bib = [
+        "% Chiron anchoring papers.",
+        "% GENERATED by scripts/generate_papers.py -- do not hand-edit.",
+        "% Every entry was resolved against the arXiv API by scripts/verify_papers.py;",
+        "% titles, authors and dates are the API's, not anyone's recollection.",
+        f"% {len(resolved)} entries.",
+        "",
+    ]
+    for track in [t for t in TRACK_ORDER if t in by_track] + [
+        t for t in by_track if t not in TRACK_ORDER
+    ]:
+        bib.append(f"% ===== {TRACK_TITLES.get(track, track)} =====")
+        bib.append("")
+        for rec in by_track[track]:
+            bib.append(bibtex_entry(rec))
+            bib.append("")
+    (out_dir / "anchors.bib").write_text("\n".join(bib), encoding="utf-8")
+
+    # ---- README.md ---------------------------------------------------------
+    recency = {}
+    if args.recency:
+        recency = json.loads(Path(args.recency).read_text(encoding="utf-8-sig"))
+
+    counts = defaultdict(int)
+    for rec in resolved:
+        counts[rec["tier"]] += 1
+    years = defaultdict(int)
+    for rec in resolved:
+        years[rec["paper"]["published"][:4]] += 1
+
+    md: list[str] = [
+        "# papers/ — the anchoring reading list",
+        "",
+        f"**{len(resolved)} papers**, every one resolved against the live arXiv API. "
+        f"{counts['must']} must-read, {counts['should']} should-read, "
+        f"{counts['could']} could-read.",
+        "",
+        "`anchors.bib` is generated, not hand-written. Titles, authors and dates come "
+        "from the API rather than from anyone's memory, because a citation that looks "
+        "right and is wrong is invisible to a reader and propagates into everything "
+        "that cites it. Regenerate with:",
+        "",
+        "```",
+        "python scripts/verify_papers.py <candidates.json> --out research/reference/papers",
+        "python scripts/generate_papers.py research/reference/papers/resolved_papers.json \\",
+        "    --recency <recency_notes.json>",
+        "```",
+        "",
+        "The verifier rejects a claimed arXiv id that resolves to a *different* paper, "
+        "and distinguishes 'unreachable' from 'does not exist' — a network timeout is "
+        "not evidence about a paper. PDFs are not committed; fetch what you need from "
+        "the `url` field.",
+        "",
+        "## Coverage by year",
+        "",
+        "| " + " | ".join(sorted(years)) + " |",
+        "|" + "---|" * len(years),
+        "| " + " | ".join(str(years[y]) for y in sorted(years)) + " |",
+        "",
+        f"{years.get('2026', 0)} of {len(resolved)} are from 2026 — this list was built "
+        "against current arXiv, not from training data.",
+        "",
+    ]
+
+    for track in [t for t in TRACK_ORDER if t in by_track] + [
+        t for t in by_track if t not in TRACK_ORDER
+    ]:
+        md.append(f"## {TRACK_TITLES.get(track, track)}\n")
+        for tier in ("must", "should", "could"):
+            recs = [r for r in by_track[track] if r["tier"] == tier]
+            if not recs:
+                continue
+            md.append(f"**{tier}**\n")
+            for rec in recs:
+                p = rec["paper"]
+                md.append(
+                    f"- [{p['title']}](https://arxiv.org/abs/{p['arxiv_id']}) "
+                    f"({p['published'][:4]}, `{p['arxiv_id']}`) — {rec['why_read']}"
+                )
+            md.append("")
+        note = recency.get(track, "").strip()
+        if note:
+            md.append(f"> **Recency and contested points.** {note}\n")
+
+    if rejected:
+        md.append("## Rejected candidates\n")
+        md.append(
+            "Recorded rather than deleted: knowing a citation failed verification is "
+            "worth more later than a tidy list.\n"
+        )
+        md.append("| Claimed title | Claimed id | Outcome |")
+        md.append("|---|---|---|")
+        for r in rejected:
+            if r.get("adjudicated"):
+                outcome = (
+                    f"**Title drift, not a bad citation.** The id is correct; the paper was "
+                    f"retitled to *{r['adjudicated']}* in a later version, and is included "
+                    f"above under that title. Cite by id — titles move."
+                )
+            else:
+                actual = r.get("id_actually_is")
+                outcome = r["reason"] + (f" (id is actually *{actual}*)" if actual else "")
+            md.append(f"| {r['claimed_title']} | `{r['claimed_id']}` | {outcome} |")
+        md.append("")
+
+    (out_dir / "README.md").write_text("\n".join(md), encoding="utf-8")
+
+    print(f"wrote {out_dir/'anchors.bib'} and {out_dir/'README.md'}")
+    print(f"  {len(resolved)} papers, {len(by_track)} tracks, {len(rejected)} rejected")
+
+
+if __name__ == "__main__":
+    main()

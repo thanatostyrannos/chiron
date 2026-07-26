@@ -148,3 +148,36 @@ belongs in `docs/evidence-standard.md` when Rig Design writes it.
 Every arXiv ID needs individual verification — inventing citations is the single worst
 failure available in this phase — and that is a fresh timebox rather than a tail-end
 push on this one.
+
+## 2026-07-26 — milestone `paper-anchors`
+
+Split the work by what each party is actually good at: **agents for discovery**
+(judgement and recency — training data is stale and 20 of the final 76 papers are from
+2026), **the arXiv API for verification** (facts). No BibTeX field is transcribed from
+anyone's memory; titles, authors and dates all come back from the API.
+
+Self-tested the verifier against four deliberate controls before trusting it: a real
+id+title (resolved), a real id attached to the *wrong* paper (caught as MISMATCH), a
+fabricated id (rejected), and a network failure (initially recorded as "not found on
+arXiv" — a flake reported as a fact about a paper's existence, which is the same
+silence-as-result failure as everything else this week). Fixed: retries with backoff,
+`unreachable` separated from `not found`, non-zero exit if anything went unchecked.
+
+**Result: of 81 candidates — every one self-reported by the agents as "verified" with
+zero UNKNOWNs — 75 resolved cleanly and 1 was wrong.** The failure is the interesting
+one: `2505.00675` cited as "Rethinking Memory in AI: Taxonomy, Operations, Topics, and
+Future Directions", an id that resolves to "Rethinking Memory in LLM based Agents:
+Representations, Operations, and Emerging Topics". Not a fabrication — the *same paper*,
+retitled between versions. Adjudicated by comparing authors and abstract, then
+re-verified through the same path and included under its canonical title. The rejection
+row stays in the README: "cite by id, titles move" is the transferable lesson, and a
+tidy table would have destroyed it.
+
+An agent self-certifying its own citations is not evidence. 98.8% accurate is very good
+and still not good enough for a register — one bad citation is invisible to a reader and
+propagates into everything downstream.
+
+Two incidental findings: the lab venv ships **no CA bundle**, so TLS to arxiv.org failed
+outright until `certifi` was installed — worth knowing before any script here talks to
+an HTTPS endpoint. And the arXiv API is slow enough (23.9 s for a bare id lookup) that
+a 45 s timeout manufactures false negatives; raised to 90 s.

@@ -13,7 +13,11 @@ as 1 KB pointer files.
    moves weekly; an unversioned benchmark is worthless.**
 2. `CODE_MAP.md` — the guided tour. Every `file:line` pointer is machine-verified by
    `scripts/generate_code_map.py`, which fails rather than emit a stale one.
-3. `papers/` — BibTeX plus the anchoring surveys. **Not yet populated.**
+3. `papers/` — 76 anchoring papers across 9 tracks, ranked must/should/could, each with
+   a one-line "read this for X". `anchors.bib` is generated from arXiv API metadata,
+   never transcribed: `scripts/verify_papers.py` resolves every claimed id and rejects
+   one that points at a *different* paper, then `scripts/generate_papers.py` emits the
+   BibTeX. 20 of 76 are from 2026 — built against current arXiv, not training data.
 
 ## Rebuilding
 
@@ -22,6 +26,8 @@ scripts/fetch_reference.sh                 # all 38 sources
 scripts/fetch_reference.sh memory          # one category
 scripts/fetch_reference.sh --provenance    # rewrite PROVENANCE.md from disk
 python scripts/generate_code_map.py <section-json>...   # rebuild CODE_MAP.md
+python scripts/verify_papers.py <candidates.json> --out research/reference/papers
+python scripts/generate_papers.py research/reference/papers/resolved_papers.json
 ```
 
 The fetch asserts completeness: manifest count must equal clones on disk, or it fails
