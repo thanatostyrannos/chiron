@@ -109,3 +109,42 @@ Instrument changes made during the run, both after the primary before/after comp
 was already captured with the `v0.2.0` probe: `--sizes` for targeted sweeps, and a GPU
 fault is now caught and reported as a result rather than aborting the sweep (a poisoned
 HIP context makes every later reading in that process meaningless, so it stops).
+
+## 2026-07-26 — milestone `reference-library`
+
+Repo pushed public at owner's instruction: https://github.com/thanatostyrannos/chiron
+(scanned for secrets and oversized files first; 0.2 MB tracked, clean).
+
+38 upstream sources fetched, ~2 GB, no weights. Every source verified against the
+GitHub/HuggingFace API *before* being written into the manifest — existence, default
+branch, SPDX licence, current SHA. That caught `poolsideai/llama.cpp` defaulting to
+`master` when the branch we need is `laguna`, and confirmed transformers really does
+ship `src/transformers/models/laguna/`.
+
+`CODE_MAP.md`: 13 sections, 91 pointers, authored by 12 parallel agents (one per
+codebase) and then **verified mechanically** — each cited file opened and the claimed
+symbol checked against the claimed line. 84/84 agent pointers came back EXACT, zero
+drift. `scripts/generate_code_map.py` re-runs that check at generation time and exits
+non-zero rather than emit a stale pointer; negative-tested with a deliberately bad
+pointer. Line numbers are pinned to the revisions in `PROVENANCE.md`.
+
+**Security finding: 29 upstream agent-instruction files.** vllm, transformers,
+torchtitan, megatron-lm, sglang, flashinfer, mooncake and letta all ship `CLAUDE.md`,
+`AGENTS.md`, `.cursorrules` or `copilot-instructions.md`. Cloned into this working tree,
+every one of them is loaded as *instructions* by a coding agent operating here — this
+milestone's whole purpose is to bring third-party code into the tree, so it manufactures
+the exposure. Renamed to `*.upstream-not-instructions`; the fetch verifies zero remain.
+
+Four failures today, and **every one presented as silence or false success, never as an
+error**: the GPU hang at 0 CPU seconds; a buffered `tail` hiding all progress; a
+credential prompt with no timeout stalling the fetch 20 minutes; and a truncated
+manifest (my edit) that printed `done.` and exited 0 after fetching 21 of 40. Only the
+last was caught by anything other than luck, and only because a count was checked. Every
+one of those is now an assertion in the relevant script. For a lab whose entire output
+is measurements, a wrong number that looks right is the failure mode that matters — this
+belongs in `docs/evidence-standard.md` when Rig Design writes it.
+
+**Deferred, not skipped:** `research/reference/papers/` (BibTeX + anchoring surveys).
+Every arXiv ID needs individual verification — inventing citations is the single worst
+failure available in this phase — and that is a fresh timebox rather than a tail-end
+push on this one.

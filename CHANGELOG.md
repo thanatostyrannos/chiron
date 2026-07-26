@@ -5,8 +5,47 @@ git tags described in CLAUDE.md (semver; milestones are named in the tag annotat
 
 ## [Unreleased]
 
-Next: the Reference Library milestone. The Hardware Validation Gate additionally owes a
+Next: `research/reference/papers/` (BibTeX + anchoring surveys) closes out the Reference
+Library; then the Frontier Survey. The Hardware Validation Gate additionally owes a
 pre-registered investigation of the ≥32 GiB tensor hang/fault.
+
+## [0.4.0] — 2026-07-26 — milestone `reference-library`
+
+### Added
+- `scripts/fetch_reference.sh` — 38 verified upstream sources across architecture,
+  models, training, memory and hardware. Every entry checked against the GitHub/HF API
+  for existence, branch, licence and revision before being written down.
+- `research/reference/PROVENANCE.md` — name, URL, exact revision, declared SPDX licence,
+  LICENSE-on-disk flag, date and purpose, generated from what is actually on disk.
+- `research/reference/CODE_MAP.md` — 13 sections, **91 machine-verified `file:line`
+  pointers** through Laguna (transformers + llama.cpp), PagedAttention, vLLM prefix
+  caching, RadixAttention, FlashInfer KV layouts, Mooncake tiering, Mamba-2 SSD,
+  Gated DeltaNet, Samba interleaving, OLMo-core training/checkpointing, and nanoGPT.
+- `scripts/generate_code_map.py` — regenerates the map and **fails rather than emit a
+  stale pointer**; re-run after any re-fetch to learn which line numbers moved.
+- Ledger entries `laguna-heads-uniform` (refuted) and `kv-per-token-laguna`.
+
+### Changed
+- `reference-model` upgraded `[C]` → `[M]`: Laguna's 3:1 SWA:global ratio is now read
+  from the shipped config (48 layers = 12 full + 36 sliding, GSSS, window 512).
+- `.gitignore`: `research/reference/**/*.md` would have committed several thousand
+  upstream markdown files on first fetch. Narrowed to our own top-level notes.
+
+### Security
+- Fetch neutralises upstream agent-instruction files (`CLAUDE.md`, `AGENTS.md`,
+  `.cursorrules`, `copilot-instructions.md`) by renaming them to
+  `*.upstream-not-instructions`. **29 were present** across vllm, transformers,
+  torchtitan, megatron-lm, sglang, flashinfer, mooncake and letta — each one otherwise
+  loaded as directives by any coding agent working in this repo. The script verifies
+  none remain and fails if any do.
+- Clones run with `GIT_TERMINAL_PROMPT=0` and no credential helper: a gated repo fails
+  in 0.29 s instead of blocking the fetch indefinitely on a credential prompt.
+- Gated sources excluded from the manifest so the library reproduces without a
+  HuggingFace account.
+
+### Fixed
+- Fetch asserts manifest count equals clones on disk. It previously printed `done.`
+  and exited 0 after fetching 21 of 40 sources.
 
 ## [0.3.0] — 2026-07-26 — experiment `uma-carveout-controls-fast-tier`
 

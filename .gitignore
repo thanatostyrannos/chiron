@@ -16,13 +16,18 @@ venv/
 # uv.lock IS committed (reproducible env); the venv is not.
 
 # --- Reference clones: reproduced by scripts/fetch_reference.sh, never committed ---
-# Ignore everything under research/reference/, but keep the markdown notes,
-# BibTeX, and the directory structure (CODE_MAP.md, PROVENANCE.md, papers/*.bib).
-research/reference/**
-!research/reference/
-!research/reference/**/
-!research/reference/**/*.md
-!research/reference/**/*.bib
+# Keep OUR notes at the top level (README.md, CODE_MAP.md, PROVENANCE.md) and our
+# BibTeX. Everything else -- every clone -- is ignored.
+#
+# The rule is deliberately NOT `!research/reference/**/*.md`: that pattern un-ignores
+# upstream markdown too, which would drag several thousand files out of vllm,
+# transformers and friends into this repo on the first fetch.
+research/reference/*
+!research/reference/*.md
+!research/reference/papers/
+research/reference/papers/*
+!research/reference/papers/*.bib
+!research/reference/papers/*.md
 
 # --- Weights, datasets, checkpoints, run artifacts (never in git; manifests only) ---
 # Root-anchored so they don't collide with source modules (e.g. themis/src/themis/data/).
