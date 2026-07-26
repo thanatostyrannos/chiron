@@ -1,0 +1,19 @@
+# Mnemosyne — the memory subsystem. THE research contribution.
+# Dependencies: torch ONLY. It must never import proteus or themis — that missing
+# dependency is what makes the separability claim mechanically true. Do not add
+# proteus here "temporarily" to unblock anything; that is the one shortcut that
+# quietly destroys the result. See CLAUDE.md → Boundary rule.
+
+[project]
+name = "mnemosyne"
+version = "0.1.0"
+description = "Layered LLM memory: KV cache, eviction/compression policies, tiering, prefix reuse, attribution telemetry. Model-agnostic by design."
+requires-python = ">=3.11"
+dependencies = ["torch"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mnemosyne"]

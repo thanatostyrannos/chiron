@@ -1,0 +1,14 @@
+# Deterministic line endings across Windows (Z13) and rented Linux GPU boxes.
+* text=auto eol=lf
+
+# PowerShell scripts stay CRLF; their UTF-8 BOM is content and is preserved as-is
+# (Windows PowerShell 5.1 mis-parses BOM-less UTF-8 that contains non-ASCII chars).
+*.ps1 text eol=crlf
+
+# Binary assets that must never be line-ending-normalized.
+*.png binary
+*.jpg binary
+*.gguf binary
+*.safetensors binary
+*.pt binary
+*.bin binary

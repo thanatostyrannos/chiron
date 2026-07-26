@@ -1,0 +1,54 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# --- uv ---
+# uv.lock IS committed (reproducible env); the venv is not.
+
+# --- Reference clones: reproduced by scripts/fetch_reference.sh, never committed ---
+# Ignore everything under research/reference/, but keep the markdown notes,
+# BibTeX, and the directory structure (CODE_MAP.md, PROVENANCE.md, papers/*.bib).
+research/reference/**
+!research/reference/
+!research/reference/**/
+!research/reference/**/*.md
+!research/reference/**/*.bib
+
+# --- Weights, datasets, checkpoints, run artifacts (never in git; manifests only) ---
+# Root-anchored so they don't collide with source modules (e.g. themis/src/themis/data/).
+/data/
+/checkpoints/
+/runs/
+*.safetensors
+*.gguf
+*.bin
+*.pt
+*.ckpt
+
+# --- Seed / bootstrap artifacts: the prompt pack that generated this repo, not repo content ---
+repo-seed/
+seed-lab.ps1
+research-lab-promptpack.zip
+*.zip
+
+# --- Claude Code tooling ---
+# .claude/agents/ IS committed: the eight subagent definitions are lab state, and a
+# session must cold-start from the repo alone. Only machine-local settings are ignored.
+.claude/settings.local.json
+.claude/*.local.json
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

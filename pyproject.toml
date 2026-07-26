@@ -1,0 +1,45 @@
+# Chiron — uv workspace root.
+# This root is NOT a distributable package (package = false); it anchors the
+# workspace, dev tooling, and shared tool config. The three real packages live
+# under packages/ and each has its own pyproject.toml, version, and tests.
+#
+# Dependency direction is enforced by what each member declares, not by discipline:
+#   mnemosyne -> torch                    (never proteus, never themis)
+#   proteus   -> torch, mnemosyne
+#   themis    -> torch, proteus, mnemosyne
+# See packages/README.md and CLAUDE.md ("Boundary rule").
+
+[project]
+name = "chiron-workspace"
+version = "0.1.0"
+description = "Chiron — one-person model architecture research lab; memory systems in LLMs."
+requires-python = ">=3.11"
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+mnemosyne = { workspace = true }
+proteus = { workspace = true }
+themis = { workspace = true }
+
+# NOTE: torch on this machine must come from AMD's gfx1151 ROCm nightly index, NOT
+# from default PyPI (which serves CPU/CUDA wheels). The index configuration is
+# deferred until the ROCm remediation step (see ASSUMPTIONS.md: torch-build). Do not
+# run `uv sync` before that is settled or it will resolve the wrong torch.
+
+[dependency-groups]
+dev = ["ruff>=0.6", "pytest>=8.0"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "packages"]
