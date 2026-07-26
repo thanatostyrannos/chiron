@@ -102,8 +102,8 @@ per sequence** — at 1K context, at 1M context, identically.
 Set that against the reference model. Laguna S 2.1 costs `2·48·8·128·2 B = 192 KiB/token`
 if every layer were global attention, giving **24 GiB of KV at 128k context** `[M]`
 (`ASSUMPTIONS.md → kv-per-token-laguna`, computed from the fetched config; the shipped
-3:1 SWA/global interleave cuts the real figure by roughly 4×, and the per-layer head
-count is non-uniform, so treat 24 GiB as an upper bound). A 48-layer constant-state model
+3:1 SWA/global interleave cuts real steady-state residency by roughly 4×, so 24 GiB is
+the all-global bound rather than what you actually hold). A 48-layer constant-state model
 at 512 KiB/layer would hold **24 MiB**. Three orders of magnitude, and the gap widens
 linearly with context.
 
@@ -336,7 +336,9 @@ right size and admission policy for the exact tier."
   shipping-product retrospectives with commercial incentives; neither is a controlled
   ablation.** Treat the disagreement as the open question of the track.
 - **Does the hybrid ratio set a capability ceiling or only a training-speed knob?**
-  2507.06457 finds recall degrades sharply below 3:1 (a ceiling); 2606.15378 `[C]` argues
+  2507.06457 finds recall improves sharply as full-attention layers increase, *particularly
+  below* a 3:1 ratio — quoted from the abstract, 2026-07-26, after an earlier draft of this
+  note stated the direction backwards in this bullet; 2606.15378 `[C]` argues
   different configurations converge given enough training and that the efficient-attention
   choice governs *how fast* long-context ability emerges, not its limit. Same year,
   incompatible framings. The resolution likely depends on token budget — which is exactly
@@ -443,6 +445,6 @@ single-device only, individual tensors kept under 32 GiB `[M]`.
   `file:line` pointers used above are machine-verified against the pinned revisions in
   `research/reference/PROVENANCE.md`.
 - `ASSUMPTIONS.md` — `gpu-fast-tier-size` (≥62 GiB at ~200 GB/s), `kv-per-token-laguna`
-  (192 KiB/token upper bound, 24 GiB at 128k), `large-tensor-fault-32gib`,
+  (192 KiB/token exact; 24 GiB at 128k is the all-global bound), `large-tensor-fault-32gib`,
   `bf16-numerics-unproven`, `reference-model` (3:1 GSSS interleave), `single-device-only`.
 - `notebook/uma-carveout-controls-fast-tier.md` — the bandwidth measurement.

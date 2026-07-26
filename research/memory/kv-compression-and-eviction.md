@@ -87,8 +87,9 @@ repetitive reasoning loops.
 Decode is memory-bandwidth-bound, not FLOPS-bound `[C]`
 [1911.02150](https://arxiv.org/abs/1911.02150) (Shazeer, 2019) — the single mental model
 to hold. You re-read the *entire* KV cache once per generated token. Our reference model
-costs at most 2 · 48 layers · 8 KV heads · 128 dims · 2 bytes = **192 KiB per token**
-`[M]` (ASSUMPTIONS: `kv-per-token-laguna`, upper bound assuming every layer were global).
+costs 2 · 48 layers · 8 KV heads · 128 dims · 2 bytes = **192 KiB per token**, exactly
+`[M]` (ASSUMPTIONS: `kv-per-token-laguna`; the 24 GiB at 128k below is the all-global
+bound — real residency is ~4× lower because 36/48 layers are windowed at 512).
 At 128k context that is 24 GiB. Against our measured ~200 GB/s `[M]`
 (`notebook/uma-carveout-controls-fast-tier.md`), reading it once takes ~0.13 s, i.e.
 ~7.8 tokens/second — arithmetic from two measured inputs, not a benchmark. For a storage
@@ -649,7 +650,7 @@ has drifted across versions, the current API title is used.
 **Lab-internal measurements**
 - `[M]` `ASSUMPTIONS.md` — `gpu-fast-tier-size` (≥62 GiB flat at ~200 GB/s),
   `large-tensor-fault-32gib` (≥32 GiB single tensors hang or fault),
-  `kv-per-token-laguna` (192 KiB/token upper bound), `reference-model` (48 layers,
+  `kv-per-token-laguna` (192 KiB/token exact), `reference-model` (48 layers,
   12 full + 36 sliding, strict GSSS), `single-device-only`, `bf16-numerics-unproven`.
 - `[M]` `notebook/uma-carveout-controls-fast-tier.md` — the fast-tier bandwidth sweep.
 - `[C]`/`[M]` `research/reference/CODE_MAP.md` — verified `file:line` pointers, used here

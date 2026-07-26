@@ -85,8 +85,11 @@ one. Below `T = w` the hybrid saves nothing at all; the whole benefit is asympto
 **Caveat, and it is ours:** Laguna sources per-layer query-head counts from
 `config.num_attention_heads_per_layer`, not the top-level `num_attention_heads: 48`
 `[M]` (`modeling_laguna.py:343`; `ASSUMPTIONS.md → laguna-heads-uniform`, status **refuted**).
-Query heads do not enter the KV formula, but treat the 192 KiB/token figure as an upper bound
-until per-layer `H_kv` is confirmed.
+Query heads do not enter the KV formula, and `num_key_value_heads` is uniform at 8 with no
+per-layer override `[M]` (verified against `config.json` at `b0a9fd7c850e`, 2026-07-26), so
+**192 KiB/token is exact**. What varies per layer is the GQA group size `G = H_q/H_kv`:
+**6 on the 12 full-attention layers, 9 on the 36 sliding ones** — which changes decode
+arithmetic intensity, not KV bytes.
 
 **What that costs on our instrument.** Our measured fast memory tier sustains ~200 GB/s out to
 ≥62 GiB `[M]` (`notebook/uma-carveout-controls-fast-tier.md`, single run per arm, 2026-07-26).

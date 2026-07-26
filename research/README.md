@@ -12,9 +12,22 @@ phases have populated them:
 3. `notes/` — the frontier survey (how 2026 frontier models work end to end). See
    `notes/README.md`. **Authored in the Frontier Survey phase.**
 
-`synthesis.md` (≤3 pages, G1 standard) sits at this level and is written last in the
-Frontier Survey phase — SCQA → answer-first → three arguments → evidence, with the
-MECE issue tree of the memory problem space and the 3–5 questions worth our compute.
+`synthesis.md` sits at this level and is written last — SCQA → answer-first → three
+arguments → evidence, with the MECE issue tree and the questions worth our compute.
+**Start here if you are reading the research for the first time**; it names what we
+pursue, what we park and why, what is folklore, and the single riskiest assumption.
+
+## State as of 2026-07-26
+
+Seventeen notes, ~95,000 words. **619 distinct arXiv ids machine-verified against the
+live API, 0 unresolved** (`scripts/verify_citations.py`; per-track reports in each
+directory's `citation-verification.json`). Resolving an id proves a paper exists, not
+that it supports the claim beside it — the check is against fabrication, not error.
+
+The synthesis is `status: proposed`. Its recommendation is to build an attribution
+instrument rather than another eviction policy, and to exploit the one hardware property
+no datacenter GPU exposes: the BIOS UMA carve-out is a measured knob on the fast/slow
+bandwidth ratio.
 
 Every material claim carries a G5 tag: `[M]` measured, `[C]` cited (arXiv/URL+date),
 `[A]` assumed. No invented numbers.

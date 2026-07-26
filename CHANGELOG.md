@@ -5,9 +5,44 @@ git tags described in CLAUDE.md (semver; milestones are named in the tag annotat
 
 ## [Unreleased]
 
-Next: the seven `research/notes/` surveys, then `research/synthesis.md` (presented before
-commit, per the kickoff). The Hardware Validation Gate still owes a pre-registered
-investigation of the ≥32 GiB tensor hang/fault.
+Next: the Curriculum, or the widened Hardware Validation Gate — see the synthesis, which
+argues the gate as written in CLAUDE.md is under-specified and should gain three checks
+before it is closed.
+
+## [0.7.0] — 2026-07-26 — milestone `frontier-survey`
+
+### Added
+- `research/notes/` — seven surveys, ~43,000 words, written by the specialist owners the
+  kickoff assigns: transformer SOTA, MoE routing, pretraining recipes, post-training,
+  inference/quantization, evaluation landscape, open-weights landscape.
+- `research/synthesis.md` — the G1 statement of what we believe and what is worth our
+  compute. Built from two independent drafts (decision lens, contribution lens) plus an
+  adversarial completeness critic; the two lenses converged on the same recommendation
+  and the same riskiest assumption without seeing each other.
+- `research/notes/citation-verification.json` — **384 arXiv ids, 0 unresolved.** Across
+  both tracks: **619 distinct verified ids, 0 fabrications.**
+
+### Changed — corrections the survey forced on our own register
+- `z13-is-right-instrument` downgraded `supported` → **untested**. It rested on a single
+  un-peer-reviewed GitHub issue while being the load-bearing justification for the entire
+  hardware strategy, and two other numbers from that same issue family have already
+  failed locally.
+- `hardware-capacity-ceiling`: the "filled — 82.67 GiB" claim was a probe reporting its
+  own search bound and contradicted the row above it. Corrected to a ≥74.40 GiB floor.
+  Its "the BIOS link is wrong as written" sentence is now marked superseded — the
+  carve-out does control the fast tier, just not the allocation ceiling.
+- `decode-intensity-varies-by-layer` retagged `[A]`: it is a derivation, not a
+  measurement, and the dual `[M]`/`[C]` tag broke the house rule.
+- `gpu-fast-tier-size` and `mnemosyne-separable` status wording corrected to match what
+  was actually demonstrated (single run per arm; guard proven, separability untested).
+
+### Fixed — contradictions between notes, settled from primary sources
+- The hybrid recall-cliff direction: `2507.06457`'s abstract says recall **improves** with
+  more full attention, *particularly below* a 3:1 ratio. One bullet had it backwards.
+- Laguna's router-logit softcapping is **implemented but disabled** —
+  `moe_router_logit_softcapping` is `0.0` in laguna-s and absent in laguna-xs, so the
+  tanh path is dead code as shipped. `pretraining-recipes.md` had claimed it was active.
+- The 192 KiB/token "upper bound" caveat removed from a fifth note (`memory-taxonomy.md`).
 
 ## [0.6.0] — 2026-07-26 — milestone `memory-survey`
 

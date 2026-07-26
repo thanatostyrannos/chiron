@@ -48,10 +48,12 @@ k = 2 · L · H_kv · d · b        [bytes per token]
 For the reference model (Laguna S 2.1: `L`=48, `H_kv`=8, `d`=128, bf16) that is
 `2·48·8·128·2 = 196,608 B = 192 KiB per token` `[M]` (ASSUMPTIONS `kv-per-token-laguna`,
 read from the fetched config at `b0a9fd7c850e`, 2026-07-26). Caveat carried from that
-same row: attention head counts vary per layer in Laguna
-(`modeling_laguna.py:343` takes `num_heads` from `config.num_attention_heads_per_layer`),
-so 192 KiB is an upper bound, not a per-layer-exact figure `[M]`
-(ASSUMPTIONS `laguna-heads-uniform`, **refuted**).
+same row: **query** head counts vary per layer in Laguna
+(`modeling_laguna.py:343` takes `num_heads` from `config.num_attention_heads_per_layer`
+— 48 on full-attention layers, 72 on sliding), but `num_key_value_heads` is uniform at 8,
+so **192 KiB/token is exact** `[M]` (ASSUMPTIONS `laguna-heads-uniform`, **refuted for
+query heads only**). The per-layer variation shows up in the GQA group size — 6 vs 9 —
+and therefore in decode arithmetic intensity, not in KV bytes.
 
 **Decode arithmetic intensity.** To emit one token, attention must read the entire
 cache and does roughly `4 · L · H_q · d · S` FLOPs against it (two matmuls, QK^T and
@@ -590,7 +592,7 @@ resolved against the arXiv API during the writing of this note (2026-07-26).
 
 **Measured on our own instrument**
 - `[M]` `notebook/uma-carveout-controls-fast-tier.md` (2026-07-26) — fast-tier boundary ≥62 GiB at ~200 GB/s with BIOS UMA FB Size = 96 GB; 30 GiB boundary with the 16 GiB default; single-buffer hang/fault at ≥32 GiB. Single run per arm.
-- `[M]` `ASSUMPTIONS.md` rows `gpu-fast-tier-size`, `hardware-capacity-ceiling`, `large-tensor-fault-32gib`, `hipblaslt-config` (20.9 TFLOPS bf16 at 8192³), `gemm-throughput-below-reference`, `kv-per-token-laguna` (192 KiB/token upper bound), `laguna-heads-uniform` (refuted), `reference-model` (12 full + 36 sliding, GSSS, window 512), `single-device-only`.
+- `[M]` `ASSUMPTIONS.md` rows `gpu-fast-tier-size`, `hardware-capacity-ceiling`, `large-tensor-fault-32gib`, `hipblaslt-config` (20.9 TFLOPS bf16 at 8192³), `gemm-throughput-below-reference`, `kv-per-token-laguna` (192 KiB/token exact), `laguna-heads-uniform` (refuted), `reference-model` (12 full + 36 sliding, GSSS, window 512), `single-device-only`.
 - `[C]` ROCm issue #6034 (Mar 2026) — ~172 GB/s reported memory bandwidth for this silicon, cited in CLAUDE.md; our measured plateau of ~200 GB/s is consistent with it.
 
 **Not cited because unverified.** Several vendor blog posts on 2026 KV-cache practice

@@ -202,10 +202,13 @@ kv_bytes = 2 x n_kv x d_head x p x (12*T + 36*512)
          = 6.07 GiB
 ```
 
-A 4x reduction from one config list. Caveat, and it is a real one: this assumes a uniform
-`n_kv` per layer, and `laguna-heads-uniform` is **refuted** — head counts are read per
-layer from `config.num_attention_heads_per_layer` `[M]` (2026-07-26). Treat 192 KiB/token
-as an upper bound until recomputed per layer.
+A 4x reduction from one config list. One clarification, because the register briefly had
+this wrong: `laguna-heads-uniform` is refuted for **query** heads only — they are read
+per layer from `config.num_attention_heads_per_layer` (48 full / 72 sliding) — while
+`num_key_value_heads` is uniform at 8 with no per-layer override `[M]` (verified against
+`config.json` at `b0a9fd7c850e`, 2026-07-26). Query heads do not appear in the KV
+product, so **192 KiB/token is exact.** What varies per layer is the GQA group size
+`G = n_q/n_kv` (6 full, 9 sliding), which moves decode arithmetic intensity, not bytes.
 
 **Why decode is bandwidth-bound, with our own numbers.** Consider one decoded token at
 batch size 1 with multi-head attention. Per layer you load `T x n_kv x d_head` K elements

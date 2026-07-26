@@ -225,3 +225,46 @@ of grounding agents in the registers rather than in their own recall.
 
 Remaining for the Frontier Survey: the seven `research/notes/` files, then
 `research/synthesis.md`, which the kickoff requires be presented before commit.
+
+## 2026-07-26 — milestone `frontier-survey`
+
+Seven notes (~43,000 words) by the specialist owners the kickoff assigns, then
+`research/synthesis.md`. **384 arXiv ids verified in the notes, 0 unresolved; 619 distinct
+verified across both tracks.** Presented the synthesis to the founder before committing,
+as the kickoff requires.
+
+The synthesis was built adversarially rather than written once: two independent drafts —
+a decision lens ("what do we build and refuse to build") and a contribution lens ("where
+is the field wrong in a way we specifically can exploit") — plus a completeness critic
+told that finding nothing counts as a failed review. **The two lenses converged on the
+same recommendation and named the same riskiest assumption without seeing each other.**
+That convergence is the strongest evidence in the document, and it is only available
+because they were run blind to one another.
+
+Recommendation: build an attribution instrument, add no new eviction policy to a field
+with ~30 and no dominance result, and exploit the BIOS UMA carve-out as a knob on the
+fast/slow bandwidth ratio — a variable no discrete GPU exposes.
+
+**The critic's most useful output was aimed at us, not at the literature: 25 overclaims,
+most of them in `ASSUMPTIONS.md`.** Acted on four immediately. The worst was
+`z13-is-right-instrument` sitting at `supported` on one un-peer-reviewed GitHub issue
+while being the load-bearing justification for the whole hardware strategy — and two other
+numbers attributed to that same issue family have already failed here. Downgraded to
+untested. Also corrected a "capacity ceiling filled" claim that contradicted the row
+directly above it, retagged a derivation that was wearing an `[M]`, and fixed two status
+words that overstated what had been shown.
+
+Three cross-note contradictions settled from primary sources rather than by picking a
+side: the hybrid recall-cliff direction (fetched 2507.06457's abstract — recall *improves*
+below 3:1), Laguna's router softcapping (config read — implemented but shipped disabled,
+so the tanh path is dead code), and the last surviving "192 KiB is an upper bound" caveat.
+
+Standing lesson from the day, now visible in the register itself: a wrong number that
+looks right is the failure mode that matters, and it propagates. My own upper-bound
+caveat reached four notes before one independent derivation contradicted it. The fix is
+not more care — it is that every derived claim should be cheap to re-check against its
+source, which is what the verification scripts now make possible.
+
+Remaining in the kickoff: Curriculum, Rig Design, Ablation Backlog, Hardware Validation
+Gate. The synthesis argues the gate as written is under-specified and should gain three
+checks before being closed.
