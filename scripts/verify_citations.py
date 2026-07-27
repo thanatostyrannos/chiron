@@ -22,6 +22,7 @@ import argparse
 import json
 import re
 import ssl
+import sys
 import time
 import urllib.parse
 import urllib.request
@@ -48,6 +49,10 @@ SPACING_S = 3.1
 ARXIV_RE = re.compile(r"\b(?:arXiv:)?(\d{4}\.\d{4,5})(?:v\d+)?\b")
 
 
+class RateLimited(Exception):
+    """arXiv is throttling this client. Not evidence about any citation -- resume later."""
+
+
 def extract_ids(root: Path) -> dict[str, set[str]]:
     """Map arXiv id -> set of files citing it."""
     cited: dict[str, set[str]] = defaultdict(set)
@@ -70,10 +75,27 @@ def resolve_batch(ids: list[str], attempts: int = 3) -> dict[str, str] | None:
             with urllib.request.urlopen(req, timeout=120, context=SSL_CONTEXT) as resp:
                 root = ET.fromstring(resp.read())
             break
+        except urllib.error.HTTPError as exc:
+            # 429 means we are the problem, not the network. arXiv throttles after a few
+            # hundred queries; retrying on a 10-second ladder just deepens the hole. Honour
+            # Retry-After when offered, otherwise back off in minutes, and give up quickly
+            # so the caller can resume later rather than grinding.
+            if exc.code == 429:
+                wait = int(exc.headers.get("Retry-After", 0) or 0)
+                if wait and attempt < attempts - 1:
+                    print(f"    429 rate-limited; Retry-After={wait}s", flush=True)
+                    time.sleep(min(wait, 300))
+                    continue
+                raise RateLimited(
+                    "HTTP 429 -- arXiv is throttling this client; wait and --resume"
+                ) from exc
+            if attempt == attempts - 1:
+                return None
+            time.sleep(2**attempt * 5)
         except Exception:  # noqa: BLE001 - timeouts, resets, malformed batches
             if attempt == attempts - 1:
                 return None
-            time.sleep(2 ** attempt * 5)
+            time.sleep(2**attempt * 5)
     else:  # pragma: no cover
         return None
 
@@ -116,7 +138,14 @@ def main() -> None:
     for i in range(0, len(to_check), BATCH):
         chunk = to_check[i : i + BATCH]
         print(f"  batch {i // BATCH + 1}: {len(chunk)} ids...", flush=True)
-        got = resolve_batch(chunk)
+        try:
+            got = resolve_batch(chunk)
+        except RateLimited as exc:
+            # Stop immediately. Grinding through the remaining batches against a throttle
+            # just marks everything unreachable and wastes the quota that the resume needs.
+            unreachable.extend(to_check[i:])
+            print(f"    {exc} -- stopping with {len(unreachable)} unchecked", flush=True)
+            break
         if got is None:
             unreachable.extend(chunk)
             print("    UNREACHABLE (recorded, not treated as fabricated)")
@@ -144,6 +173,22 @@ def main() -> None:
                     sorted({f for fs in cited.values() for f in fs})},
     }
     out = Path(args.out) if args.out else Path(args.path) / "citation_check.json"
+
+    # A network outage once produced a report with 0 resolved and 279 unreachable, and
+    # it overwrote a good report in place. A run that verified nothing must never be
+    # allowed to replace a run that verified something -- that is data loss disguised as
+    # a result. Divert to .partial and tell the caller how to resume.
+    if unreachable and not resolved and out.exists():
+        partial = out.with_suffix(".partial.json")
+        partial.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        print(
+            f"\nREFUSING TO OVERWRITE {out}: this run resolved nothing and"
+            f" {len(unreachable)} ids were unreachable (the API was likely down)."
+            f"\nwrote {partial} instead. Re-run with --resume {out} when the API is back.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
     out.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"\nwrote {out}")
 
