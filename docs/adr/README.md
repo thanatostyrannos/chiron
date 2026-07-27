@@ -27,4 +27,7 @@ edit to an accepted ADR cannot be committed unnoticed.
 
 | Slug | Status | Date | Superseded by | Body SHA-256 |
 |---|---|---|---|---|
-| _(none yet — first ADRs land in the Rig Design phase: framework choice, config schema, eval probe set, ablation statistical standard)_ | | | | |
+| `aotriton-attention-stays-off-by-default` | Accepted | 2026-07-26 | - | c447bf66bf6fa66830aad15542f656bde9b6bd59f964fa708783e845d8f6c7aa |
+| `attribution-instrument-over-eviction-policy` | Proposed | 2026-07-26 | - | - |
+| `bios-uma-carveout-at-96gb` | Accepted | 2026-07-26 | - | 326ab7e10ffef1b298615cebeca9f54e00136bc1222fa72afb167d1793e7febd |
+| `hipblaslt-is-a-numerics-control` | Accepted | 2026-07-26 | - | 46114831a5ce98e0a52e4bd2080ebf51a56ea6406cdc197492be28f12461b125 |
