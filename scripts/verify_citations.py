@@ -53,6 +53,19 @@ class RateLimited(Exception):
     """arXiv is throttling this client. Not evidence about any citation -- resume later."""
 
 
+def default_output_path(target: Path) -> Path:
+    """Where the report goes when --out is not given.
+
+    A directory input gets the report inside it. A SINGLE FILE input gets a sibling --
+    the original version appended a child path to the file, which raises
+    FileNotFoundError at write time, after the whole verification run has completed.
+    See tests/test_verify_citations_output_path.py.
+    """
+    if target.is_dir():
+        return target / "citation-verification.json"
+    return target.with_name(f"{target.stem}-citation-verification.json")
+
+
 def extract_ids(root: Path) -> dict[str, set[str]]:
     """Map arXiv id -> set of files citing it."""
     cited: dict[str, set[str]] = defaultdict(set)
@@ -172,7 +185,7 @@ def main() -> None:
         "by_file": {f: sorted(i for i, fs in cited.items() if f in fs) for f in
                     sorted({f for fs in cited.values() for f in fs})},
     }
-    out = Path(args.out) if args.out else Path(args.path) / "citation_check.json"
+    out = Path(args.out) if args.out else default_output_path(Path(args.path))
 
     # A network outage once produced a report with 0 resolved and 279 unreachable, and
     # it overwrote a good report in place. A run that verified nothing must never be
