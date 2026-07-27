@@ -49,3 +49,28 @@ install.
 | `memory-hierarchy-measured.mmd` | Our measured tiers against the datacenter assumption the literature uses |
 | `paged-attention-block-table.mmd` | Logical-to-physical blocks, prefix sharing, and where the VM analogy breaks |
 | `attribution-oracle-diff.mmd` | The oracle-diff harness and its fault-injection calibration loop |
+
+## Rendered output
+
+`docs/model-architecture.html` is a **self-contained** page — every SVG inlined, no
+network, no CDN, no JavaScript. Open it from disk in any browser. It is generated from
+`docs/model-architecture.md`, so edit the markdown and rebuild rather than editing the
+HTML:
+
+```
+uv run --script scripts/build_architecture_html.py
+uv run --script scripts/build_architecture_html.py --check   # staleness gate
+```
+
+`rendered/*.svg` are the standalone exports the HTML links to for full-size viewing, and
+are what to hand to anyone who wants the diagrams in Visio, Lucidchart or Figma.
+
+Two things the build has to repair in mermaid's output, both of which only bite once
+several diagrams share one page and neither of which looks broken:
+
+- **Every mermaid SVG uses `id="my-svg"`**, and each carries a `<style>` block scoped to
+  `#my-svg`. Eleven inlined diagrams meant 137 duplicate ids and every diagram's
+  stylesheet applying to every other. All ids are namespaced per figure at build time.
+- **`width="100%"` plus an inline `max-width`** shrinks a wide diagram to the container
+  until its labels are unreadable. Width is pinned to the viewBox so the figure scrolls
+  instead — the page itself never scrolls horizontally, which is verified at 375px.

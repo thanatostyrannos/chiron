@@ -31,6 +31,9 @@ Subdirectories:
 - **`model-architecture.md`** — the architecture and system-layout diagrams, 11 of them,
   each grounded in a config key, a `file:line`, or an `ASSUMPTIONS.md` row (336 grounding
   references total). Start here for a picture of how any of this fits together.
+- **`model-architecture.html`** — the same document as a self-contained page with every
+  diagram inlined as SVG. No network, no JS; open it from disk. Generated — edit the
+  markdown and run `uv run --script scripts/build_architecture_html.py`.
 - **`diagrams/`** — the Mermaid sources, render-validated by
   `scripts/validate_diagrams.py`.
 - **`adr/`** — 4 architecture decision records, 3 accepted and hash-frozen.
