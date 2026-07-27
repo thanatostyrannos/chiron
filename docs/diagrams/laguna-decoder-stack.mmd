@@ -1,0 +1,41 @@
+flowchart TB
+  IN["input_ids"]
+  EMB["embed_tokens<br/>vocab 100352 to d_model 3072"]
+  NORM["final RMSNorm<br/>rms_norm_eps 1e-6"]
+  HEAD["lm_head to 100352 logits<br/>tie_word_embeddings false"]
+
+  IN --> EMB
+
+  subgraph UNIT1["Unit 1 of 12 -- layers 0 to 3 -- the only unit that is not identical"]
+    direction TB
+    L0["layer 0 -- GLOBAL attention<br/>48 query heads / 8 KV heads -- GQA group 6<br/>DENSE MLP: the one layer with no router"]
+    L123["layers 1, 2, 3 -- SLIDING attention<br/>72 query heads / 8 KV heads -- GQA group 9<br/>sliding_window 512 -- MoE"]
+    L0 --> L123
+  end
+
+  subgraph UNITN["Units 2 to 12 -- layers 4 to 47 -- this same shape, 11 more times"]
+    direction TB
+    G["G -- layers 4, 8, 12 ... 44 -- GLOBAL<br/>48 query heads / 8 KV heads -- GQA group 6<br/>attends every position, up to 1048576<br/>YaRN RoPE, theta 500000, on 64 of 128 head dims"]
+    S["S S S -- the three layers after each G -- SLIDING<br/>72 query heads / 8 KV heads -- GQA group 9<br/>sees only the most recent 512 tokens<br/>plain RoPE, theta 10000, on all 128 head dims"]
+    G --> S
+  end
+
+  EMB --> L0
+  L123 -->|"then units 2 to 12"| G
+  S -->|"out of layer 47"| NORM
+  NORM --> HEAD
+
+  subgraph MLPSLOT["Reference panel -- what fills the MLP slot"]
+    direction TB
+    DENSE["layer 0 only -- LagunaMLP, intermediate_size 12288<br/>selected because mlp_only_layers names layer 0"]
+    MOE["layers 1 to 47 -- LagunaSparseMoeBlock<br/>256 experts, top 10 chosen by sigmoid score, moe_intermediate_size 1024<br/>plus an always-on shared expert of width 1024"]
+  end
+
+  subgraph KVCOST["Reference panel -- what the interleave buys, bf16 KV cache"]
+    direction TB
+    KVPER["Per layer, per token: 2 x 8 KV heads x 128 head_dim x 2 bytes = 4.0 KiB<br/>identical on every layer -- query-head count never enters this product"]
+    KVFLAT["If all 48 layers were global: 192.0 KiB per token = 24.0 GiB at 128k context"]
+    KVREAL["As actually built: 12 global layers grow with context = 6.0 GiB at 128k<br/>36 sliding layers are pinned at 512 tokens = 2.0 MiB each, 72 MiB total<br/>about 6.1 GiB -- a 4x cut. Arithmetic from config, not a measurement."]
+    KVFIT["Budget against the measured fast tier: at least 62 GiB at about 200 GB/s"]
+    KVPER --> KVFLAT --> KVREAL --> KVFIT
+  end

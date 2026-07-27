@@ -443,20 +443,20 @@ sequenceDiagram
     alt insufficient blocks
         A-->>S: None
         S->>S: PREEMPT lowest-priority running request
-        Note over S,A: KV destroyed; prefill will be re-run.<br/>Not backpressure — work is discarded.
+        Note over S,A: KV destroyed, prefill will be re-run.<br/>Not backpressure — work is discarded.
     else ok
         A-->>S: block ids
     end
     S->>S: spend budget: chunked prefill + decodes + K spec tokens
     S->>D: draft(id_last, K)
-    D-->>S: K candidate tokens (one forward; block-diffusion emits all K at once)
+    D-->>S: K candidate tokens (one forward, block-diffusion emits all K at once)
     S->>T: forward over K+1 positions (one KV read, K+1x FLOPs)
     T-->>V: target logits at each position
     V->>V: modified rejection sampling (2211.17192)
     V-->>S: accepted + recovered + bonus tokens
     S->>A: free rejected lookahead slots
     S-->>C: emit tokens
-    Note over S,T: acceptance length a raises BOTH intensities;<br/>batch B raises only the weight term.
+    Note over S,T: acceptance length a raises BOTH intensities.<br/>Batch B raises only the weight term.
 ```
 
 ### Telemetry schema — the deliverable, not the afterthought

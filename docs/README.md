@@ -25,3 +25,17 @@ Subdirectories:
 - `adr/` — Architecture Decision Records. **Immutable once Accepted.** See
   `adr/README.md` for the register and the hash-enforcement rule.
 - `diagrams/` — Mermaid sources (`*.mmd`).
+
+## Written so far
+
+- **`model-architecture.md`** — the architecture and system-layout diagrams, 11 of them,
+  each grounded in a config key, a `file:line`, or an `ASSUMPTIONS.md` row (336 grounding
+  references total). Start here for a picture of how any of this fits together.
+- **`diagrams/`** — the Mermaid sources, render-validated by
+  `scripts/validate_diagrams.py`.
+- **`adr/`** — 4 architecture decision records, 3 accepted and hash-frozen.
+
+Still to be written in the Rig Design phase: `experiment-unit-economics.md`,
+`evidence-standard.md`, `system-architecture.md`, `proteus-config-space.md`,
+`mnemosyne-cache-interface.md`, `corpus-and-probes.md`, `argus-telemetry-schema.md`,
+`research-roadmap.md`. Several now have a diagram waiting for the prose.

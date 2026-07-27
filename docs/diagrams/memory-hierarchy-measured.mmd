@@ -1,0 +1,45 @@
+flowchart TB
+
+  kv_budget["What has to fit: the Laguna S 2.1 KV cache<br/>2 x 48 layers x 8 KV heads x 128 head_dim x 2 B = 192.0 KiB per token<br/>24.0 GiB at 128k context, computed from config.json, exact"]
+
+  subgraph measured_here["THIS MACHINE, MEASURED 2026-07-26 - Z13, gfx1151, one unified 128 GB pool, single run per arm"]
+    carveout_knob["BIOS UMA FB Size - THE KNOB<br/>one boot-time field moves the fast/slow boundary<br/>no discrete GPU exposes this control at all"]
+    carveout_default["carve-out at the 16 GiB default, the before arm<br/>fast tier ends at a 30 GiB footprint<br/>194.9 GB/s at 30 GiB, 61.3 GB/s at 32 GiB, 114.1 GB/s at 60 GiB<br/>reported pool 82.99 GiB, Windows sees 111.6 GB"]
+    fast_tier["FAST TIER, carve-out at 96 GB - the planning number<br/>at least 62 GiB, flat at 203-205 GB/s, no knee anywhere swept<br/>a floor, not an edge: the sweep hit the wall below before it found one"]
+    tensor_wall["HARD WALL INSIDE THE FAST TIER - any single tensor at or above 32 GiB<br/>31 GiB copies clean at 199.9 GB/s<br/>32 GiB hard-hangs at 0 CPU, silently, no error, force-killed at 11 min<br/>36 GiB raises hipErrorLaunchFailure"]
+    slower_region["SLOWER REGION past the fast tier<br/>reported pool 107.87 GiB, and at least 74.40 GiB written, read back, released<br/>its bandwidth at the 96 GB carve-out is UNMEASURED"]
+    oversubscribed["the pool figure is not a ceiling<br/>allocation-only probes returned at least 100 GiB<br/>the driver oversubscribes into system RAM"]
+    host_side["HOST - Windows visible RAM 31.6 GB<br/>the same physical DRAM as the fast tier, with no bus to cross<br/>bandwidth assumed comparable, never measured"]
+  end
+
+  subgraph assumed_by_literature["THE MACHINE THE LITERATURE ASSUMES - cited, the ladder the offload and CXL designs are built around"]
+    gpu_hbm["GPU HBM<br/>TB/s, tens of GiB<br/>size fixed at purchase"]
+    pcie_link["PCIe<br/>tens of GB/s"]
+    host_dram["Host DRAM<br/>about 100 GB/s"]
+  end
+
+  ratio_contrast["THE RATIO IS THE WHOLE ARGUMENT<br/>theirs: 10-50x, set by a bus, not variable<br/>ours: 2-3x, set by a BIOS field, swept in one reboot"]
+  research_consequence["Retention beats eviction as that ratio falls, because a refetch costs<br/>bytes over the slow path and a recompute does not.<br/>So a class of published KV-tiering guidance may be a claim about interconnects<br/>rather than about language models - testable here, and on no card we own."]
+
+  kv_budget -->|"budget against the fast tier, never against the pool"| fast_tier
+  carveout_knob -->|"one reboot"| carveout_default
+  carveout_knob -->|"one reboot, kept - see ADR bios-uma-carveout-at-96gb"| fast_tier
+  fast_tier -.->|"applies to any single buffer, whatever the total footprint"| tensor_wall
+  fast_tier -->|"past the measured floor"| slower_region
+  slower_region -.-> oversubscribed
+  slower_region -->|"same pool, shared with the OS"| host_side
+  gpu_hbm -->|"10-50x drop, across the bus"| pcie_link
+  pcie_link --> host_dram
+  slower_region -.->|"measured"| ratio_contrast
+  pcie_link -.->|"assumed"| ratio_contrast
+  ratio_contrast --> research_consequence
+
+  classDef wall fill:#ffe3e3,stroke:#c92a2a,stroke-width:3px,color:#000
+  classDef knob fill:#e7f0ff,stroke:#1c62d1,stroke-width:3px,color:#000
+  classDef unmeasured fill:#f1f3f5,stroke:#868e96,color:#000
+  classDef anchor fill:#fff9db,stroke:#e8a90c,color:#000
+
+  class tensor_wall wall
+  class carveout_knob knob
+  class slower_region,oversubscribed,host_side unmeasured
+  class kv_budget,ratio_contrast,research_consequence anchor

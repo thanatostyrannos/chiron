@@ -1,0 +1,82 @@
+flowchart TB
+
+  subgraph REQS["Block table, scheduler side - one ordered list per request, per KV cache group"]
+    direction LR
+    AL0["A logical 0<br/>tokens 0-15"]
+    AL1["A logical 1<br/>tokens 16-31"]
+    AL2["A logical 2<br/>tail, partial, never hashed"]
+    BL0["B logical 0<br/>same 16 tokens"]
+    BL1["B logical 1<br/>same 16 tokens"]
+    BL2["B logical 2<br/>tail, partial, never hashed"]
+  end
+
+  subgraph POOL["One preallocated KV pool - physical frames, DEFAULT_BLOCK_SIZE = 16 tokens, cache.py:47"]
+    direction LR
+    F12["frame 12<br/>ref_cnt = 2<br/>hashed, pinned"]
+    F19["frame 19<br/>ref_cnt = 2<br/>hashed, pinned"]
+    F31["frame 31<br/>ref_cnt = 1"]
+    F44["frame 44<br/>ref_cnt = 1"]
+    SIZING["Pool sizing on the lab machine<br/>Laguna S 2.1 = 192.0 KiB per token, so 24.0 GiB at 128k ctx<br/>fast tier measured at >= 62 GiB sustaining ~200 GB/s<br/>but any single tensor >= 32 GiB hangs, so the pool must be chunked"]
+  end
+
+  subgraph LOOKUP["Prefix hit path - runs before allocation, never after"]
+    direction TB
+    MATCH["find_longest_cache_hit<br/>walk block hashes from token 0, break on the FIRST miss,<br/>floor to alignment - single_type_kv_cache_manager.py:708"]
+    HASH["cached_block_hash_to_block probe<br/>key = hash of parent_block_hash + token_ids + extra_keys<br/>kv_cache_utils.py:596, block_pool.py:198"]
+    TOUCH["touch - ref_cnt += 1 and O(1) unlink from the free queue<br/>THIS is what makes a matched block un-evictable<br/>block_pool.py:702"]
+  end
+
+  subgraph FREEQ["FreeKVCacheBlockQueue - the free list and the LRU victim cache are the same list, kv_cache_utils.py:184"]
+    direction LR
+    FFRONT["FRONT - reclaimed first<br/>unhashed blocks, prepend_n<br/>block_pool.py:741"]
+    FMID["frame 88 - ref_cnt 0, KV contents and hash entry INTACT<br/>still matchable, still resurrectable by touch"]
+    FBACK["BACK - survives longest<br/>hashed blocks, append_n<br/>block_pool.py:742"]
+  end
+
+  FREEB["free_blocks on reversed request blocks - ref_cnt -= 1<br/>freeing is NOT evicting; the hash entry stays live<br/>single_type_kv_cache_manager.py:503, block_pool.py:719"]
+  ALLOC["get_new_blocks - popleft_n, then _maybe_evict_cached_block<br/>drops the stale hash entry, sets ref_cnt = 1, no zeroing<br/>eviction happens HERE, at reallocation - block_pool.py:647, 679"]
+  KWALK["Worker side - the same table flattened to a dense int32 matrix<br/>of max_num_reqs by max_num_blocks_per_req, copied to GPU each step,<br/>then walked inside the attention kernel, one load per KV tile.<br/>No MMU, no TLB - worker/block_table.py:81, triton_unified_attention.py:424"]
+
+  AL0 --> F12
+  AL1 --> F19
+  AL2 --> F31
+  BL0 -->|"prefix hit"| F12
+  BL1 -->|"prefix hit"| F19
+  BL2 --> F44
+
+  MATCH --> HASH
+  HASH -->|"hit"| TOUCH
+  TOUCH -->|"ref_cnt 1 to 2"| F12
+  TOUCH -->|"ref_cnt 1 to 2"| F19
+  TOUCH -.->|"unlink on hit"| FMID
+  HASH -->|"miss"| ALLOC
+
+  FREEB --> FFRONT
+  FREEB --> FBACK
+  FFRONT --> FMID
+  FMID --> FBACK
+  FFRONT -->|"popleft_n"| ALLOC
+  ALLOC --> F31
+  ALLOC --> F44
+
+  POOL --> KWALK
+
+  subgraph BREAKS["Four places the virtual-memory analogy breaks"]
+    direction TB
+    BRK_FAULT["No fault path.<br/>allocate_slots returns None when the pool runs dry<br/>kv_cache_manager.py:484 and 523. Nothing is demand-paged<br/>and there is no lower tier to fault in from."]
+    BRK_GRAIN["Eviction granularity is the REQUEST, not the page.<br/>The scheduler preempts a whole sequence, frees every block it holds<br/>and resets num_computed_tokens to 0<br/>scheduler.py:566-613 and 1212-1216."]
+    BRK_KEY["The key is a prefix CHAIN, not a content hash.<br/>hash_block_tokens folds in parent_block_hash, so the same 16 tokens<br/>at a different offset are a different key, and identical blocks<br/>are deliberately never de-duplicated - block_pool.py:47-51."]
+    BRK_LOSS["Discarding is always legal.<br/>KV is recomputable from the token ids, so a wrong eviction costs<br/>one prefill and never costs correctness. No storage tier you have<br/>operated is permitted to make that trade."]
+  end
+
+  BRK_FAULT -.-> ALLOC
+  BRK_GRAIN -.-> FREEB
+  BRK_KEY -.-> HASH
+  BRK_LOSS -.-> ALLOC
+
+  classDef analogybreak fill:#fff4e6,stroke:#d97706,stroke-width:2px,color:#111111;
+  classDef pinnedframe fill:#e6f4ea,stroke:#137333,color:#111111;
+  classDef sizingnote fill:#f1f3f4,stroke:#5f6368,color:#111111;
+  class BRK_FAULT,BRK_GRAIN,BRK_KEY,BRK_LOSS analogybreak;
+  class F12,F19 pinnedframe;
+  class SIZING,KWALK sizingnote;

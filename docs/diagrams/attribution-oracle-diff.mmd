@@ -1,0 +1,80 @@
+flowchart TB
+    subgraph pre["Precondition: Hardware Validation Gate, still open"]
+        det["Determinism proven<br/>one seed, bit-identical logits"]
+        fp32["fp32 reference run<br/>bf16 unproven on gfx1151, and a numerics<br/>wobble is indistinguishable from a policy effect"]
+        buf["Every buffer under 32 GiB<br/>a 32 GiB tensor hangs silently at 0% CPU"]
+    end
+
+    probe["PROBE<br/>one prompt, one fixed seed<br/>the answer is a deterministic function of one injected span,<br/>so the correct attribution is known by construction"]
+
+    subgraph harness["Mnemosyne oracle-diff harness: the lab's deliverable"]
+        oracle["ORACLE run<br/>full KV cache, nothing withheld<br/>192.0 KiB/token, so 24.0 GiB at 128k context<br/>against a measured 62 GiB fast tier at about 200 GB/s"]
+        treated["TREATED run<br/>same prompt, same seed, some entries withheld"]
+        ledger["DROP LEDGER<br/>layer, head and position of every withheld entry"]
+        kl["Per-token KL<br/>oracle against treated"]
+        loc["LOCALISER<br/>attribute the KL spike at token t to entries withheld from t<br/>attributable only on the 12 full-attention layers: on the 36<br/>sliding layers, a token past the 512 window was unreadable anyway"]
+    end
+
+    subgraph nulldist["Seed-to-seed null"]
+        nullruns["Same config, same prompt, two different seeds<br/>no policy, no fault"]
+        band["Null KL band<br/>the noise floor a spike must clear to count"]
+    end
+
+    subgraph calib["PHASE 1: fault injection certifies the EVAL, not a policy"]
+        f_absent["needle absent<br/>expect: score falls to chance"]
+        f_kvdrop["the needle's own KV entries dropped<br/>expect: large drop, localised to them"]
+        f_uniform["uniform eviction of p% of entries<br/>expect: monotone degradation slope"]
+        f_rope["cache re-packed so RoPE phase no longer matches position<br/>expect: large drop"]
+        f_headmask["retrieval heads masked<br/>expect: retrieval tasks drop, others intact"]
+        f_shuffle["haystack sentence order shuffled<br/>expect: NO drop"]
+        injector["Fault injector<br/>a KNOWN fault stands in for the policy"]
+        check{"All six responses<br/>match prediction?"}
+    end
+
+    certified["Instrument certified<br/>it demonstrably detects a memory regression"]
+    retire["Eval retired<br/>it was measuring something other than memory"]
+
+    subgraph phase2["PHASE 2: unreachable until Phase 1 passes"]
+        policy["Candidate policy P at Mnemosyne's three plug points<br/>write-time admission, deferred eviction, read-time selection"]
+        verdict["Report divergence AND downstream task accuracy,<br/>and their correlation, as a first-class result"]
+    end
+
+    risk["RISKIEST ASSUMPTION: that divergence localises at all.<br/>It may smear evenly across every dropped entry, or flip one<br/>critical token at negligible mean KL. If so the localiser<br/>returns nothing and this whole plan changes."]
+
+    pre -->|"nothing below is admissible until these hold"| probe
+    probe --> oracle
+    probe --> treated
+    probe --> nullruns
+    nullruns --> band
+    treated --> ledger
+    oracle --> kl
+    treated --> kl
+    kl --> loc
+    ledger -->|"the only admissible causes"| loc
+    band -->|"significance threshold"| loc
+
+    f_absent --> injector
+    f_kvdrop --> injector
+    f_uniform --> injector
+    f_rope --> injector
+    f_headmask --> injector
+    f_shuffle --> injector
+    injector -->|"occupies the TREATED slot"| treated
+
+    loc -->|"calibration mode"| check
+    check -->|"yes, all six moved as predicted"| certified
+    check -->|"no, the eval sat still"| retire
+    retire -.->|"redesign the probe, re-inject"| probe
+    certified -->|"unlocks"| policy
+    policy -->|"now occupies the TREATED slot"| treated
+    loc -->|"certification mode"| verdict
+    loc -.-> risk
+
+    classDef assumption fill:#fff4d6,stroke:#b8860b,stroke-width:3px;
+    classDef pass fill:#e3f5e3,stroke:#2e7d32,stroke-width:2px;
+    classDef fail fill:#fbe3e3,stroke:#c62828,stroke-width:2px;
+    classDef measured fill:#e8f0fb,stroke:#1a4f8a,stroke-width:2px;
+    class risk assumption;
+    class certified pass;
+    class retire fail;
+    class oracle,band measured;

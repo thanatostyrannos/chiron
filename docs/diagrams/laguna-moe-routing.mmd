@@ -1,0 +1,46 @@
+flowchart TD
+    H["hidden_states, flattened to B*T by 3072<br/>hidden_size = 3072"]
+
+    subgraph ROUTER["LagunaTopKRouter - modeling_laguna.py lines 163-191"]
+        LOGITS["router linear, cast to fp32<br/>weight 256 by 3072, line 178"]
+        CAP["tanh softcap, line 181<br/>IMPLEMENTED BUT SHIPPED OFF<br/>moe_router_logit_softcapping = 0.0"]
+        SIG["sigmoid, line 183<br/>routing_scores: 256 independent scores<br/>NOT softmax - no shared probability budget"]
+        SEL["add e_score_correction_bias, line 185<br/>256 values, requires_grad False<br/>aux-loss-free: router_aux_loss_coef = 0.0"]
+        TOPK["topk k = 10 of 256, line 186<br/>returns indices only, scores discarded"]
+        GATHER["gather routing_scores at selected_experts<br/>line 187 - reads the PRE-BIAS values"]
+        NORM["divide by their sum, line 188<br/>the 10 routing_weights sum to 1"]
+    end
+
+    subgraph EXPERTS["LagunaExperts - one repeating unit; 10 of 256 fire per token"]
+        EX["expert e: gate_up_proj 2048 by 3072, chunk into gate and up<br/>SwiGLU, act_fn of gate times up, lines 225-226"]
+        DOWN["down_proj back to 3072, line 227<br/>moe_intermediate_size = 1024"]
+        WEIGHT["scale by this token-slot routing_weight, line 228"]
+        ACC["index_add into final_hidden_states, line 229"]
+    end
+
+    SHARED["shared expert: LagunaMLP, line 245<br/>shared_expert_intermediate_size = 1024<br/>ALWAYS ON - no router, no gate, every token"]
+
+    SCALE["times moe_routed_scaling_factor = 2.5, line 250"]
+    ADD["add shared_output, line 251"]
+    OUT["block output - 47 of 48 layers take this path<br/>layer 0 is a plain dense LagunaMLP, line 433"]
+
+    H --> LOGITS
+    H --> SHARED
+    H --> EX
+    LOGITS -.->|"bypassed while softcapping is 0.0"| CAP
+    CAP -.-> SIG
+    LOGITS --> SIG
+    SIG --> SEL
+    SEL --> TOPK
+    TOPK -->|"which experts"| GATHER
+    SIG -->|"the values - bias steers selection, never the weights"| GATHER
+    GATHER --> NORM
+    TOPK -->|"expert ids"| EX
+    NORM -->|"combine weights"| WEIGHT
+    EX --> DOWN
+    DOWN --> WEIGHT
+    WEIGHT --> ACC
+    ACC --> SCALE
+    SCALE --> ADD
+    SHARED --> ADD
+    ADD --> OUT

@@ -638,12 +638,12 @@ sequenceDiagram
         M->>M: backward -> accumulate into .grad
         M->>T: record loss, tokens (device tensors, unevaluated)
     end
-    M->>M: clip_grad_norm_(1.0); record pre/post-clip norms
+    M->>M: clip_grad_norm_(1.0), record pre/post-clip norms
     alt grad_norm or loss beyond running threshold
         M->>T: skipped_step = true
         M->>M: discard update
     else normal
-        M->>M: apply WSD LR to param groups; optimizer.step()
+        M->>M: apply WSD LR to param groups, then optimizer.step()
     end
     M->>M: zero_grads()
     S->>T: every metrics_collect_interval steps: drain (ONE host-device sync)
@@ -659,7 +659,7 @@ sequenceDiagram
     participant F as Filesystem
     participant V as Round-trip verifier
     S->>C: save(step, model, optim, dataloader cursor, rng)
-    C->>F: write into <dir>-tmp/  (full rewrite; no journal, no delta)
+    C->>F: write into dir-tmp/ (full rewrite, no journal, no delta)
     C->>F: write metadata (logical tensor -> path,offset,length)
     C->>F: fsync, then rename <dir>-tmp -> <dir>   %% atomicity is rename-granularity
     Note over C,F: a torn save loses the whole checkpoint, not a tail
@@ -668,7 +668,7 @@ sequenceDiagram
     S->>C: resume(path)
     C->>F: range-read only the needed extents
     C-->>S: model + optim + cursor (denominated in TOKENS, not batches)
-    Note over S: data order is re-derived from (seed, epoch, dataset len),<br/>never persisted; dataset fingerprint hard-fails on mismatch
+    Note over S: data order is re-derived from (seed, epoch, dataset len),<br/>never persisted. Dataset fingerprint hard-fails on mismatch
 ```
 
 Both diagrams follow `CODE_MAP` → `training/olmo-core`: `checkpoint.py:498` (`_temporary_wd`,

@@ -1,0 +1,59 @@
+flowchart TB
+
+  write["PROTEUS produces k_i, v_i<br/>8 KV heads x head_dim 128 x 2 B = 192 KiB per token, exact<br/>48 layers: 12 full_attention, 36 sliding_attention at window 512"]
+  query["PROTEUS emits q_t - one query per decode step"]
+  read["PROTEUS computes o_t = sum of a_i v_i<br/>over whatever Mnemosyne returned"]
+
+  onehook["The hook that does NOT work:<br/>score(keys, values, attention) -> subset"]
+
+  subgraph mnem["Mnemosyne - the public contract. Never imports proteus or themis."]
+    direction TB
+    admit["WRITE-TIME ADMISSION<br/>sees k_i, v_i only. O(d), no attention matrix<br/>hosts L2-norm, KeyDiff, EpiKV"]
+    stage["staging buffer - hold k steps, then flush<br/>k steps of extra residency buys k steps of context"]
+    defer["DEFERRED EVICTION<br/>sees prompt-side or k-step-lagged attention<br/>hosts H2O, SnapKV, PyramidKV, ChunkKV, KVpop"]
+    resident["resident set - budget B, per layer and per head<br/>12 global layers grow with context, 36 stay at 512<br/>budget against the 62 GiB-or-more fast tier at ~200 GB/s [M];<br/>keep any single tensor under 32 GiB [M]"]
+    select["READ-TIME SELECTION<br/>sees the actual q_t<br/>hosts Quest, SparQ, RocketKV stage 2"]
+    emit["TELEMETRY, mandatory - two scalars per step, per layer, per head.<br/>Error is at most (1 - A) x max distance from a dropped v_i to the retained output."]
+  end
+
+  gone["dropped - no backing store, no miss path, no hit-rate metric.<br/>The only refetch is re-prefilling the whole prefix."]
+
+  fastkv["OUT OF CONTRACT - FastKV / Token-Selective Propagation.<br/>A token not propagated past layer L never has KV computed for L+1..48:<br/>not evicted, never produced. It edits Proteus's forward pass."]
+
+  massA["A - retained attention mass<br/>every score-based policy optimises this"]
+  dist["dropped-value distance<br/>no published policy reports this one"]
+  ratios["compression is TWO numbers, always -<br/>bytes held vs bytes read per step<br/>RocketKV: 400x against 32.6%"]
+
+  subgraph inv["Invariants - every plug point above is held to all four"]
+    direction LR
+    i1["eviction is a bet on correctness,<br/>not on latency - it is irreversible"]
+    i2["dropping reweights the survivors -<br/>the softmax denominator shrinks"]
+    i3["attention sinks stay pinned -<br/>load-bearing, not hot"]
+    i4["every policy stays bypassable -<br/>the full-cache oracle is the instrument"]
+  end
+
+  write --> admit
+  admit -->|"admit"| stage
+  admit -->|"reject"| gone
+  stage --> defer
+  defer -->|"survivors"| resident
+  defer -->|"evict"| gone
+  query --> select
+  resident -->|"candidates"| select
+  select -->|"subset read this step, cache unchanged"| read
+
+  onehook -.->|"KVpop needs a staging buffer and a flush trigger"| defer
+  onehook -.->|"RocketKV stage 2 needs q_t, which does not exist yet"| select
+  onehook -.->|"FastKV cannot be hosted at any depth"| fastkv
+
+  admit -.-> emit
+  defer -.-> emit
+  select -.-> emit
+  emit --> massA
+  emit --> dist
+  emit --> ratios
+
+  classDef proteus fill:#e8eeff,stroke:#3a4a80,color:#111
+  classDef outside fill:#ffecec,stroke:#8a3a3a,color:#111
+  class write,query,read proteus
+  class gone,fastkv,onehook outside

@@ -1,0 +1,57 @@
+sequenceDiagram
+    autonumber
+    actor Res as Researcher
+    participant Card as Notebook record<br/>frozen G2 card
+    participant Git as Git history<br/>commit + semver tag
+    participant Themis as Themis<br/>ablation rig
+    participant Proteus as Proteus<br/>model under test
+    participant Mnem as Mnemosyne<br/>KV cache + plug points
+    participant Argus as Argus<br/>telemetry JSONL
+    participant Ledger as ASSUMPTIONS.md<br/>register
+
+    rect rgb(238, 242, 248)
+    Note over Res,Git: PRE-REGISTRATION GATE - completes before any GPU work starts
+    Res->>Card: write the G2 card verbatim - HYPOTHESIS, FOR, BECAUSE, MEASURED BY, SUCCESS, KILL, COST, RISKIEST
+    Res->>Card: freeze the design - arms, matched param and token budgets, seed list, named confounder
+    Card->>Git: commit the card on a clean tree and tag it
+    Git-->>Res: the card is now a record. SUCCESS and KILL can no longer move
+    end
+
+    Res->>Themis: run the pre-registered arm set
+
+    Themis->>Themis: resolve configs/swa-4to1-ctx32k.yaml into one typed config object
+    Note right of Themis: every ablation axis is a config field.<br/>Reference model reads 48 layer_types entries,<br/>sliding_window 512, 8 KV heads, head_dim 128
+    Themis->>Argus: stamp the environment fingerprint - torch wheel, HIPBLASLT_TENSILE_LIBPATH set, AOTriton flag off
+
+    loop once per seed - 3 or more, never 1
+        Themis->>Proteus: build the model at this seed with param count matched across arms
+        Proteus->>Mnem: request cache for 48 layers of 8 KV heads by 128 dim
+        Mnem-->>Proteus: cache handle - 192.0 KiB per token, so 24.0 GiB at 128k context
+        Note over Mnem: fits the measured 62 GiB fast tier at ~200 GB/s.<br/>Keep every single tensor under 32 GiB -<br/>larger ones hang silently at 0 CPU
+
+        loop once per step
+            Proteus->>Mnem: write K and V, then read through admission / eviction / read-selection
+            Mnem->>Mnem: replay the step against a full-cache oracle and diff per-token KL
+            Mnem-->>Argus: attribution record - which plug point dropped which token
+            Proteus-->>Argus: loss, LR, throughput, cache stats
+        end
+        Argus->>Argus: buffer metrics as device tensors, flush on an interval - reading one stalls the GPU
+
+        Themis->>Themis: checkpoint into a temp dir then rename, verify the reload is bit-exact
+        Argus-->>Themis: one JSONL run file for this seed
+    end
+
+    Themis->>Themis: aggregate across seeds - mean, confidence interval, seed-to-seed null distribution
+    Themis->>Card: read SUCCESS and KILL for the first time
+    Note over Themis,Card: the thresholds are opened only now.<br/>Moving one here is a change of standard and must be declared as one
+
+    alt primary metric clears SUCCESS
+        Themis-->>Res: adopt the arm
+    else primary metric hits KILL
+        Themis-->>Res: drop the axis and write it up with equal care
+    else lands between the two
+        Themis-->>Res: partial - the mechanism stays open
+    end
+
+    Res->>Card: append the Results section once, then it freezes too
+    Res->>Ledger: update the assumption row - status, evidence tag, date

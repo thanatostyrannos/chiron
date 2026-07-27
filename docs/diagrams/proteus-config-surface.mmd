@@ -1,0 +1,78 @@
+flowchart TD
+    CFG["ProteusConfig - one typed object loaded from YAML<br/>every field below is an ablation axis<br/>green values are read from laguna-s config.json at b0a9fd7c850e - tag [M]"]
+
+    subgraph SCHED["Layer schedule - the list IS the hypothesis"]
+        direction TB
+        LIST["layer_types - one string per layer index<br/>read at layer construction, modeling_laguna.py:365<br/>Laguna S ships strict GSSS: 12 full + 36 sliding = 3 to 1"]
+        FULL["full_attention<br/>KV residency grows with context"]
+        SWA["sliding_attention<br/>sliding_window = 512 tokens"]
+        RECUR["linear attention / SSM<br/>no such value exists in LagunaConfig - Proteus-only axis<br/>plug point: Mamba-2 ssm_state, Gated DeltaNet, Samba 1 to 1"]
+    end
+
+    subgraph GEOM["Attention geometry - varies BY LAYER TYPE, not by model"]
+        direction TB
+        QH["num_attention_heads_per_layer<br/>Laguna S: 48 query heads on full, 72 on sliding<br/>top-level num_attention_heads 48 is wrong for 36 of 48 layers"]
+        KVH["num_key_value_heads = 8, uniform, no per-layer override<br/>head_dim = 128"]
+        GQA["GQA group G = query heads / kv heads<br/>6 on full layers, 9 on sliding<br/>decode arithmetic intensity is 2G / dtype bytes"]
+        AGATE["gating = per-head<br/>softplus output gate, one scalar per head<br/>alternative in code: per-element"]
+    end
+
+    subgraph POS["Positional scheme - also keyed by layer type"]
+        direction TB
+        RFULL["full layers: YaRN, rope_theta 500000, factor 128<br/>partial_rotary_factor 0.5, original ctx 8192"]
+        RSWA["sliding layers: plain RoPE, rope_theta 10000<br/>partial_rotary_factor 1.0"]
+        NOPE["NoPE and the partial-rotary sweep<br/>open axis - nothing in the reference exercises it"]
+    end
+
+    subgraph MOEBLK["MoE - per layer, independent of the attention schedule"]
+        direction TB
+        MTYPE["mlp_layer_types - dense or sparse per layer<br/>Laguna S: layer 0 dense, the other 47 sparse"]
+        EXP["num_experts 256, num_experts_per_tok 10<br/>moe_intermediate_size 1024 plus always-on shared expert 1024<br/>moe_routed_scaling_factor 2.5"]
+        ROUTER["router: sigmoid, not softmax<br/>e_score_correction_bias with router_aux_loss_coef 0.0<br/>logit softcapping exists in code but ships at 0.0 = OFF"]
+    end
+
+    DW["Depth x width<br/>num_hidden_layers x hidden_size = 48 x 3072, intermediate 12288<br/>our ablations run 20M-300M params - tag [A], untested"]
+
+    subgraph BUDGET["Pinned by measurement on gfx1151 - budgets, not axes"]
+        direction TB
+        KVCOST["KV per token = 2 x 48 x 8 x 128 x 2 bytes = 192.0 KiB exactly<br/>24.0 GiB at 128k context - tag [M]"]
+        TIER["fast tier flat at ~200 GB/s out to at least 62 GiB<br/>BIOS UMA carve-out 96 GB - tag [M], one run per arm"]
+        BUF["a single tensor of 32 GiB or more hard-hangs at 0 CPU<br/>31 GiB copies cleanly at 199.9 GB/s - tag [M]"]
+        ACT["SDPA retains the score matrix: 147.2 bytes per T squared<br/>AOTriton path is 6.6 and stays OFF by default - tag [M]"]
+        DIST["torch.distributed is absent from the lab wheel<br/>expert / tensor / pipeline parallel fail at import - tag [M]"]
+    end
+
+    CFG --> LIST
+    CFG --> QH
+    CFG --> KVH
+    CFG --> AGATE
+    CFG --> MTYPE
+    CFG --> DW
+
+    LIST --> FULL
+    LIST --> SWA
+    LIST --> RECUR
+
+    QH --> GQA
+    KVH --> GQA
+
+    FULL -->|"rope_parameters key"| RFULL
+    SWA -->|"rope_parameters key"| RSWA
+
+    MTYPE --> EXP
+    EXP --> ROUTER
+
+    KVH -.->|"sizes"| KVCOST
+    KVCOST -.->|"must fit inside"| TIER
+    TIER -.->|"and no single buffer may reach"| BUF
+    LIST -.->|"long-context arms are gated by"| ACT
+    EXP -.->|"expert count capped single-device by"| DIST
+    DW -.->|"param budget capped single-device by"| DIST
+
+    classDef root fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+    classDef axis fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
+    classDef pinned fill:#ffebee,stroke:#c62828,color:#b71c1c
+
+    class CFG root
+    class LIST,FULL,SWA,RECUR,QH,KVH,GQA,AGATE,RFULL,RSWA,NOPE,MTYPE,EXP,ROUTER,DW axis
+    class KVCOST,TIER,BUF,ACT,DIST pinned

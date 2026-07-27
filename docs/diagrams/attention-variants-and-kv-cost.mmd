@@ -1,0 +1,52 @@
+flowchart TB
+    FORMULA["KV bytes per token = 2 x L x H_kv x d x b<br/>Laguna S 2.1 constants: L = 48, d = 128, b = 2 bytes for bf16<br/>n_q, hidden_size, parameter count, expert count and vocab do not appear.<br/>A 118B-A8.5B MoE and a 300M dense model with the same four numbers<br/>cost exactly the same per token."]
+
+    subgraph VAR_MHA["MHA: H_kv = n_q = 48, G = 1"]
+        QMHA["48 query heads, q_0 to q_47"]
+        KMHA["48 KV head pairs<br/>K_i and V_i, 128 wide each"]
+        BMHA["2 x 48 x 48 x 128 x 2 B<br/>= 1152 KiB per token<br/>baseline, 1.00x"]
+        QMHA -->|"one private KV head each"| KMHA --> BMHA
+    end
+
+    subgraph VAR_GQA["GQA-8: H_kv = 8, G = 6. What Laguna ships."]
+        QGQA["48 query heads, partitioned into 8 groups of 6"]
+        KGQA["8 KV head pairs<br/>group g serves q_6g through q_6g+5<br/>num_key_value_groups = n_q // H_kv"]
+        BGQA["2 x 48 x 8 x 128 x 2 B<br/>= 192 KiB per token<br/>6x smaller than MHA"]
+        QGQA -->|"6 query heads share 1 KV head"| KGQA --> BGQA
+    end
+
+    subgraph VAR_MQA["MQA: H_kv = 1, G = 48"]
+        QMQA["48 query heads, all in one group"]
+        KMQA["1 KV head pair<br/>shared by every query head"]
+        BMQA["2 x 48 x 1 x 128 x 2 B<br/>= 24 KiB per token<br/>48x smaller than MHA"]
+        QMQA -->|"48 query heads share 1 KV head"| KMQA --> BMQA
+    end
+
+    subgraph VAR_MLA["MLA: the 2 x H_kv x d term is replaced, not resized"]
+        QMLA["every query head reads the same entry<br/>per-head K and V are reconstructed by kv_b_proj"]
+        KMLA["1 latent per token, shared by all heads<br/>d_c = 512 plus d_r = 64 decoupled rope key = 576 wide<br/>Kimi Linear ranks, dropped into Laguna's 48 layers"]
+        BMLA["576 x 48 x 2 B<br/>= 54 KiB per token<br/>21x smaller than MHA, 3.6x smaller than GQA-8"]
+        QMLA -->|"no per-head KV at all"| KMLA --> BMLA
+    end
+
+    FORMULA --> QMHA
+    FORMULA --> QGQA
+    FORMULA --> QMQA
+    FORMULA -.->|"formula no longer applies"| QMLA
+
+    UNIFORM["Shape note: all four priced at n_q = 48 on every layer, so the columns are comparable.<br/>Laguna actually runs 72 query heads on its 36 sliding layers, so a true MHA Laguna<br/>is 1584 KiB per token, 8.25x the shipped GQA-8.<br/>Query heads set G, hence decode speed. They never set KV bytes."]
+
+    WINDOW["The window edits a different factor: how many tokens are retained,<br/>not how wide each token's entry is. Laguna keeps 12 full layers plus<br/>36 sliding layers at w = 512, so 128k context costs 6.07 GiB, not 24.0 GiB.<br/>Both axes multiply cleanly; they answer different questions."]
+
+    GOTCHA["MEASURED GOTCHA: the HF reference caches the EXPANDED form.<br/>modeling_kimi.py:401 runs kv_b_proj BEFORE modeling_kimi.py:413 calls past_key_values.update,<br/>so the cache holds 32 x 128 nope + 32 x 64 rope for K plus 32 x 128 for V<br/>= 10240 elements = 20 KiB per layer per token.<br/>17.8x larger than the latent and 5x larger than GQA-8's 4 KiB per layer.<br/>The advertised win lives in the serving engine's absorb trick, not in the model class."]
+
+    BMHA --> UNIFORM
+    BGQA --> WINDOW
+    BMLA --> GOTCHA
+
+    classDef shipped fill:#e8f4ea,stroke:#2f7d3f,stroke-width:2px,color:#14301c
+    classDef warn fill:#fdeceb,stroke:#b3352b,stroke-width:2px,color:#3d0f0b
+    classDef note fill:#f4f4f4,stroke:#8a8a8a,color:#222222
+    class BGQA shipped
+    class GOTCHA warn
+    class UNIFORM,WINDOW note

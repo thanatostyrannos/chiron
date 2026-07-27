@@ -1,0 +1,53 @@
+flowchart TB
+  subgraph chiron["Chiron — the lab: repo, docs, curriculum, governance. Owns no runtime code."]
+    direction TB
+
+    governance["docs/adr/ — decision records, frozen once Accepted<br/>docs/adr/README.md is the register: slug, status, date, body SHA-256<br/>tests/test_adr_immutability.py recomputes the hashes and fails on mismatch"]
+
+    ledgers["ASSUMPTIONS.md — assumption, status, evidence, date<br/>notebook/ — pre-registered hypothesis cards and results<br/>Binding number for all KV work: fast tier ≥62 GiB at ~200 GB/s, measured 2026-07-26"]
+
+    guard["BOUNDARY ENFORCEMENT — a mechanism, not discipline<br/>packages/mnemosyne/pyproject.toml declares torch only — no proteus, no themis,<br/>so an accidental import fails at dependency resolution rather than surviving review<br/>tests/test_package_boundaries.py AST-walks packages/mnemosyne/src and fails,<br/>naming the offending file, on any import of proteus or themis<br/>Proved red-then-green 2026-07-26; separability itself is still untested until<br/>the clean-venv wheel acceptance test runs at the mnemosyne-core milestone"]
+
+    subgraph themis["Themis — packages/themis — the ablation rig"]
+      direction TB
+      themis_rig["Owns: pre-registration, matched param and token budgets,<br/>seed management ≥3, run execution, aggregation, confidence intervals"]
+      argus["argus/ — a module, not a package<br/>telemetry: JSONL loss, LR, throughput, cache-stats<br/>Reserved name; earns a package only if it outgrows the module"]
+      themis_data["data/ — a module, not a package<br/>seeded resumable loaders plus targeted recall and retrieval probes<br/>Deliberately unnamed: no interface or lifecycle of its own yet"]
+    end
+
+    subgraph proteus["Proteus — packages/proteus — the model architecture"]
+      direction TB
+      proteus_cfg["Owns: decoder, attention variants, MoE gating, positional schemes.<br/>Every ablation axis is a config field; the config surface IS the experimental surface.<br/>Reference shape read from laguna-s config.json: 48 layers as<br/>12 full_attention plus 36 sliding_attention, sliding_window 512, 256 experts with 10 active"]
+    end
+
+    subgraph mnemosyne["Mnemosyne — packages/mnemosyne — the memory subsystem, and THE research contribution"]
+      direction TB
+      mnemo_cache["Owns: KV cache, tiering, prefix reuse, compression, attribution telemetry.<br/>Sizing target from the reference config: 2·48·8·128·2 B = 192.0 KiB per token,<br/>so 24.0 GiB at 128k context against the ≥62 GiB fast tier"]
+      plugs["Public interface: three plug points —<br/>write-time admission, deferred eviction, read-time selection.<br/>One score-then-subset hook cannot host the existing literature"]
+      lethe["Lethe — RESERVED, no code, no directory<br/>the eviction-policy layer; the name is spent only once<br/>there is more than one policy to hold"]
+    end
+  end
+
+  torch["torch — the only dependency Mnemosyne is permitted<br/>2.12.0a0+rocm7.13.0a20260313 on gfx1151, native Windows<br/>Single device: torch.distributed is absent from this build, so every parallelism path fails at import"]
+
+  themis ==>|"depends on"| proteus
+  themis ==> mnemosyne
+  proteus ==>|"requests cache through Mnemosyne's public interface"| mnemosyne
+  themis --> torch
+  proteus --> torch
+  mnemosyne --> torch
+  mnemosyne -.->|"THE EDGE THAT MUST NOT EXIST<br/>proteus and themis are invisible to mnemosyne by construction"| proteus
+  guard -.->|"enforces"| mnemosyne
+
+  classDef contribution fill:#eef6ff,stroke:#0b63c5,stroke-width:2px,color:#0b2d4e
+  classDef reserved fill:#f4f4f4,stroke:#8a8a8a,stroke-width:1px,color:#4a4a4a
+  classDef control fill:#fff4f4,stroke:#cc0000,stroke-width:2px,color:#6b0000
+  classDef record fill:#f7f4ff,stroke:#6b4fbb,stroke-width:1px,color:#31215e
+
+  class mnemo_cache,plugs contribution
+  class lethe,argus reserved
+  class guard control
+  class governance,ledgers record
+
+  linkStyle 6 stroke:#cc0000,stroke-width:4px
+  linkStyle 7 stroke:#cc0000,stroke-width:2px

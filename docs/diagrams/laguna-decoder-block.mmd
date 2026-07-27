@@ -1,0 +1,72 @@
+flowchart TD
+    IN["hidden_states in : [B, T, 3072]"]
+
+    subgraph attnpath["Attention sublayer : LagunaDecoderLayer.forward, lines 450-462"]
+        LN1["input_layernorm : RMSNorm 3072, eps 1e-6"]
+        QPROJ["q_proj, no bias : 3072 -> n_heads x 128"]
+        KVPROJ["k_proj / v_proj, no bias : 3072 -> 8 KV heads x 128, uniform across all layers"]
+        QKNORM["q_norm / k_norm : RMSNorm over head_dim 128, applied before RoPE"]
+        ROPE["apply_rotary_pos_emb : cos/sin built once per layer TYPE, not per layer"]
+        CACHE[("past_key_values.update : 192.0 KiB per token all-layers = 24.0 GiB at 128k ctx; windowed layers hold 512 tokens, not ctx")]
+        SDPA["attention_interface : GQA, scale = 128^-0.5"]
+        GPROJ["g_proj -> softplus : one scalar per head"]
+        GMUL["per-head output gate : scales all 128 dims of each head"]
+        OPROJ["o_proj : n_heads x 128 -> 3072"]
+    end
+
+    RES1(["residual add"])
+
+    subgraph ffnpath["FFN sublayer : chosen by config.mlp_layer_types, line 433"]
+        LN2["post_attention_layernorm : RMSNorm 3072"]
+        DENSE["LagunaMLP dense : SwiGLU, intermediate 12288"]
+        ROUTER["LagunaTopKRouter : sigmoid of W.h, independent scores, no softmax budget"]
+        SELECT["+ e_score_correction_bias, then top-10 of 256 : bias shifts SELECTION only, aux loss coef 0.0"]
+        EXPERTS["10 routed experts : SwiGLU width 1024, weighted by normalised sigmoid scores"]
+        SHARED["shared expert : SwiGLU width 1024, runs for every token"]
+        SCALE["x 2.5 : moe_routed_scaling_factor"]
+        SUMN["routed + shared"]
+    end
+
+    RES2(["residual add"])
+    OUT["hidden_states out : [B, T, 3072]"]
+
+    subgraph layertype["Chosen by a lookup in config.layer_types, line 365 : the ONLY per-layer difference"]
+        FULL["full_attention, 12 of 48 layers : 48 q heads / 8 kv, GQA group 6; YaRN theta 500000 over 64 of 128 dims"]
+        SWA["sliding_attention, 36 of 48 layers : 72 q heads / 8 kv, GQA group 9; plain RoPE theta 10000 over all 128 dims"]
+    end
+
+    IN --> LN1
+    IN -->|"residual, carried untouched"| RES1
+    LN1 --> QPROJ
+    LN1 --> KVPROJ
+    LN1 -->|"gate reads the LAYER INPUT, not the attention output"| GPROJ
+    QPROJ -->|"Q"| QKNORM
+    KVPROJ -->|"K only"| QKNORM
+    KVPROJ -->|"V: no norm, no RoPE"| CACHE
+    QKNORM --> ROPE
+    ROPE -->|"K"| CACHE
+    ROPE -->|"Q"| SDPA
+    CACHE -->|"K, V for every readable position"| SDPA
+    SDPA --> GMUL
+    GPROJ --> GMUL
+    GMUL --> OPROJ
+    OPROJ --> RES1
+
+    RES1 --> LN2
+    RES1 -->|"residual"| RES2
+    LN2 -->|"dense: layer 0 only"| DENSE
+    LN2 -->|"sparse: 47 of 48 layers"| ROUTER
+    LN2 -->|"sparse layers only, unrouted"| SHARED
+    ROUTER --> SELECT
+    SELECT --> EXPERTS
+    EXPERTS --> SCALE
+    SCALE --> SUMN
+    SHARED --> SUMN
+    DENSE --> RES2
+    SUMN --> RES2
+    RES2 --> OUT
+
+    FULL -.->|"sliding_window = None; full causal mask"| SDPA
+    SWA -.->|"sliding_window = 512; windowed causal mask"| SDPA
+    FULL -.->|"rope_parameters.full_attention"| ROPE
+    SWA -.->|"rope_parameters.sliding_attention"| ROPE
